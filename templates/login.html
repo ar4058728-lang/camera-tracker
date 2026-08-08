@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera Tracker — Masuk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #040810;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #e6edf3;
+    }
+
+    /* Subtle grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    .card {
+      position: relative;
+      background: #0b1628;
+      border: 1px solid #1e2d45;
+      border-radius: 16px;
+      padding: 48px 40px 44px;
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+      box-shadow: 0 0 60px rgba(0, 212, 255, 0.05);
+    }
+
+    /* Accent line top */
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 20px; right: 20px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #00d4ff, transparent);
+      border-radius: 2px;
+    }
+
+    .icon {
+      font-size: 44px;
+      margin-bottom: 18px;
+      display: block;
+    }
+
+    h1 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 20px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      color: #e6edf3;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #4d6a8a;
+      margin-bottom: 36px;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.02em;
+    }
+
+    .error-box {
+      background: rgba(229, 57, 53, 0.08);
+      border: 1px solid rgba(229, 57, 53, 0.3);
+      border-radius: 8px;
+      padding: 11px 16px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      color: #ff6b6b;
+      text-align: left;
+    }
+
+    .field {
+      position: relative;
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: #4d6a8a;
+      text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 6px;
+      text-align: left;
+    }
+
+    input[type="password"] {
+      width: 100%;
+      padding: 13px 16px;
+      background: #040810;
+      border: 1px solid #1e2d45;
+      border-radius: 8px;
+      color: #e6edf3;
+      font-size: 15px;
+      font-family: 'JetBrains Mono', monospace;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input[type="password"]:focus {
+      border-color: #00d4ff;
+      box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.08);
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      margin-top: 8px;
+      padding: 13px;
+      background: transparent;
+      border: 1px solid #00d4ff;
+      border-radius: 8px;
+      color: #00d4ff;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+    }
+
+    button[type="submit"]:hover {
+      background: rgba(0, 212, 255, 0.1);
+      box-shadow: 0 0 20px rgba(0, 212, 255, 0.15);
+    }
+
+    .version {
+      position: absolute;
+      bottom: -30px;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: #1e2d45;
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="icon">📷</span>
+    <h1>CAMERA TRACKER</h1>
+    <p class="subtitle">// akses terbatas</p>
+
+    {% if error %}
+    <div class="error-box">⚠ {{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/login">
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="password" placeholder="••••••••" autofocus required>
+      </div>
+      <button type="submit">MASUK →</button>
+    </form>
+
+    <p class="version">v1.0 · only HTTP local network</p>
+  </div>
+</body>
+</html>
