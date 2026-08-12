@@ -706,15 +706,28 @@ let allSessions=[], selectedIds=new Set();
 const $ = id => document.getElementById(id);
 
 // ── Global API helper: tangani session expired (401) ─────────────────────────
-async function apiFetch(url, opts={}) {
-  const r = await fetch(url, opts);
-  if (r.status === 401) {
-    // Session habis — redirect ke login
+async function apiFetch(url, opts = {}) {
+  const response = await fetch(url, opts);
+  if (response.status === 401) {
     alert('Sesi Anda telah habis. Silakan login kembali.');
     location.href = '/login';
     throw new Error('Session expired');
   }
-  return r;
+  if (!response.ok) {
+    // Coba baca body sebagai teks (bisa HTML atau JSON error)
+    const text = await response.text();
+    let message = `Error ${response.status}`;
+    try {
+      const json = JSON.parse(text);
+      if (json.error) message = json.error;
+    } catch {
+      // Jika bukan JSON, ambil potongan teks (hindari HTML panjang)
+      const clean = text.replace(/<[^>]*>/g, '').trim().slice(0, 200);
+      if (clean) message = clean;
+    }
+    throw new Error(message);
+  }
+  return response;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
