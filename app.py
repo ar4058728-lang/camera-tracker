@@ -17,7 +17,18 @@ except ImportError:
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "ganti-secret-key-acak-32-karakter-atau-lebih")
-app.permanent_session_lifetime = timedelta(days=7)
+
+# ── Konfigurasi untuk PythonAnywhere (HTTPS proxy) ───────────────────────────
+app.config.update(
+    PERMANENT_SESSION_LIFETIME  = timedelta(days=7),
+    SESSION_COOKIE_HTTPONLY     = True,
+    SESSION_COOKIE_SAMESITE     = "Lax",   # wajib agar cookie dikirim di PythonAnywhere
+    SESSION_COOKIE_SECURE       = False,   # False karena Flask menerima via HTTP internal
+    PREFERRED_URL_SCHEME        = "https", # supaya url_for() menghasilkan https://
+)
+
+# Hapus baris ini karena sudah pindah ke app.config di atas:
+# app.permanent_session_lifetime = timedelta(days=7)
 APP_PASSWORD = os.getenv("APP_PASSWORD", "admin123")
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker.db")
 
@@ -263,7 +274,13 @@ init_db()
 def login_required(f):
     @wraps(f)
     def w(*a,**k):
-        if not session.get("logged_in"): return redirect(url_for("login"))
+        if not session.get("logged_in"):
+            # Jika request dari API (JSON), kembalikan 401 bukan redirect HTML
+            if (request.path.startswith("/api/") or
+                    request.headers.get("Content-Type","").startswith("application/json") or
+                    request.headers.get("X-Requested-With") == "XMLHttpRequest"):
+                return jsonify(error="Sesi habis, silakan login ulang.", redirect="/login"), 401
+            return redirect(url_for("login"))
         return f(*a,**k)
     return w
 
