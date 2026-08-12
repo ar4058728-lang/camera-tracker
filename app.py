@@ -30,7 +30,7 @@ app.config.update(
 # Hapus baris ini karena sudah pindah ke app.config di atas:
 # app.permanent_session_lifetime = timedelta(days=7)
 APP_PASSWORD = os.getenv("APP_PASSWORD", "admin123")
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker.db")
+DB_PATH = "/home/camtracker/camera-tracker/tracker.db"
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
