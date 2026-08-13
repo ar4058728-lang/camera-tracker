@@ -780,3 +780,21 @@ def app_config_set():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=5000)
+
+@app.route("/api/captures/all/<token>", methods=["DELETE"])
+@login_required
+def delete_all_captures(token):
+    db = get_db()
+    db.execute("DELETE FROM captures WHERE token_id=?", (token,))
+    db.commit(); db.close()
+    return jsonify(ok=True)
+
+@app.route("/api/sessions/all", methods=["DELETE"])
+@login_required
+def delete_all_sessions():
+    db = get_db()
+    db.execute("DELETE FROM captures")
+    db.execute("DELETE FROM access_logs")
+    db.execute("DELETE FROM tokens")
+    db.commit(); db.close()
+    return jsonify(ok=True)
