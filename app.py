@@ -148,7 +148,7 @@ def init_db():
             expires_at         TEXT NOT NULL,
             revoked            INTEGER DEFAULT 0,
             used               INTEGER DEFAULT 0,
-            fake_config        TEXT DEFAULT '{}'   -- NEW
+            fake_config        TEXT DEFAULT '{}'
         );
         CREATE TABLE IF NOT EXISTS captures (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,7 +201,7 @@ def init_db():
         "ALTER TABLE tokens ADD COLUMN active_from TEXT DEFAULT ''",
         "ALTER TABLE captures ADD COLUMN address TEXT DEFAULT ''",
         "CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL)",
-        "ALTER TABLE tokens ADD COLUMN fake_config TEXT DEFAULT '{}'",  -- NEW
+        "ALTER TABLE tokens ADD COLUMN fake_config TEXT DEFAULT '{}'",
     ]
     for m in migrations:
         try: db.execute(m); db.commit()
